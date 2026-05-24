@@ -7,11 +7,22 @@ path (PostgreSQL + pgvector, Redis/Celery, Supabase storage, an LLM key).
 """
 from __future__ import annotations
 
+import os as _os
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Vercel sets VERCEL=1 automatically. The serverless /var/task filesystem is
+# read-only so SQLite and local storage must live in /tmp instead.
+_ON_VERCEL: bool = bool(_os.environ.get("VERCEL"))
+_DEFAULT_DB_URL: str = (
+    "sqlite+aiosqlite:////tmp/tenderpilot.db"
+    if _ON_VERCEL
+    else "sqlite+aiosqlite:///./tenderpilot.db"
+)
+_DEFAULT_STORAGE_DIR: str = "/tmp/storage" if _ON_VERCEL else "./storage"
 
 
 class Settings(BaseSettings):
@@ -43,19 +54,21 @@ class Settings(BaseSettings):
     # --- Database ---
     # SQLite (async) by default; set DATABASE_URL to a postgresql+asyncpg DSN
     # in production. pgvector is auto-detected when running on PostgreSQL.
-    database_url: str = "sqlite+aiosqlite:///./tenderpilot.db"
+    # On Vercel the default points to /tmp (the only writable dir on serverless).
+    database_url: str = _DEFAULT_DB_URL
     # Auto-run create_all on startup. Convenient for dev/demo; set to false and
     # use Alembic migrations for a managed production database.
     auto_create_db: bool = True
     # Serverless (e.g. Vercel) needs NullPool + pgbouncer-safe asyncpg so a
     # connection is never reused across frozen invocations. Enable on Vercel.
-    db_use_null_pool: bool = False
+    db_use_null_pool: bool = _ON_VERCEL
 
     # --- Storage ---
     # "local" writes encrypted-at-rest files under STORAGE_DIR; "supabase"
     # uses Supabase Storage when SUPABASE_URL / SUPABASE_SERVICE_KEY are set.
+    # On Vercel the default points to /tmp (the only writable dir on serverless).
     storage_backend: Literal["local", "supabase"] = "local"
-    storage_dir: str = "./storage"
+    storage_dir: str = _DEFAULT_STORAGE_DIR
     supabase_url: str | None = None
     supabase_service_key: str | None = None
     supabase_bucket: str = "tenderpilot"
@@ -81,8 +94,8 @@ class Settings(BaseSettings):
     celery_eager: bool = True  # run tasks inline when no broker is configured
     # Run tender ingestion synchronously inside the upload request. Required on
     # serverless platforms (Vercel) where post-response background tasks and
-    # Celery workers are not available.
-    ingest_inline_sync: bool = False
+    # Celery workers are not available. Defaults to True on Vercel.
+    ingest_inline_sync: bool = _ON_VERCEL
 
     # --- Uploads ---
     max_upload_mb: int = 50

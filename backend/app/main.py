@@ -24,8 +24,11 @@ logger = logging.getLogger("tenderpilot")
 async def lifespan(app: FastAPI):
     # Auto-create tables when enabled (dev/demo). Disable + use Alembic in prod.
     if settings.auto_create_db:
-        await init_db()
-        logger.info("Database initialized (auto create_all, %s)", settings.database_url.split("://")[0])
+        try:
+            await init_db()
+            logger.info("Database initialized (auto create_all, %s)", settings.database_url.split("://")[0])
+        except Exception as exc:
+            logger.warning("auto_create_db failed (%s) — continuing startup", exc)
     logger.info(
         "TenderPilot AI %s starting — env=%s ai_enabled=%s storage=%s",
         __version__, settings.environment, settings.ai_enabled, settings.storage_backend,
