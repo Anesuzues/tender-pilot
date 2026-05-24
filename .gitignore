@@ -1,0 +1,37 @@
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# --- Databases / local data ---
+*.db
+*.sqlite3
+storage/
+
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+!.env.vercel.example
+
+# --- Node / frontend (if added later) ---
+node_modules/
+.next/
+.vercel/
+
+# --- Editor / OS / tooling ---
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

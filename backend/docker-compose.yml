@@ -1,0 +1,64 @@
+# Local production-like stack: PostgreSQL + pgvector, Redis, API, Celery worker.
+# Bring up with:  docker compose up --build
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tenderpilot
+      POSTGRES_PASSWORD: tenderpilot
+      POSTGRES_DB: tenderpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenderpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://tenderpilot:tenderpilot@db:5432/tenderpilot
+      REDIS_URL: redis://redis:6379/0
+      CELERY_EAGER: "false"
+      SECRET_KEY: change-me-in-real-deployments
+      STORAGE_BACKEND: local
+      STORAGE_DIR: /data/storage
+      LLM_PROVIDER: stub        # set to anthropic/openai + add API key for real AI
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - filedata:/data
+
+  worker:
+    build: .
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tenderpilot:tenderpilot@db:5432/tenderpilot
+      REDIS_URL: redis://redis:6379/0
+      CELERY_EAGER: "false"
+      STORAGE_BACKEND: local
+      STORAGE_DIR: /data/storage
+      LLM_PROVIDER: stub
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - filedata:/data
+
+volumes:
+  pgdata:
+  filedata:
