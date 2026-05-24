@@ -1,0 +1,25 @@
+# --- Core API ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# --- Validation / settings ---
+pydantic>=2.7
+pydantic-settings>=2.2
+email-validator>=2.1
+
+# --- Database ---
+SQLAlchemy>=2.0
+aiosqlite>=0.20          # default dev driver (SQLite)
+asyncpg>=0.29            # PostgreSQL driver (required for Vercel / production)
+
+# --- Auth ---
+PyJWT>=2.8
+
+# --- AI / RAG / HTTP ---
+httpx>=0.27
+pypdf>=4.2               # pure-python PDF text extraction
+
+# --- Testing ---
+pytest>=8.0
+pytest-asyncio>=0.23
