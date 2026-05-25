@@ -1,5 +1,22 @@
 /* ---------- Analytics ---------- */
 function Analytics() {
+  const [stats, setStats] = React.useState(null);
+  const [activityData, setActivityData] = React.useState(TENDER_ACTIVITY_MONTH);
+
+  React.useEffect(() => {
+    if (!window.API || !API.isLoggedIn()) return;
+    API.getAnalytics().then(d => {
+      if (d.stats) setStats(d.stats);
+      if (d.activity_by_month && d.activity_by_month.length) {
+        setActivityData(d.activity_by_month.map(m => ({ m: m.month, uploaded: m.uploaded, won: m.won, lost: m.lost })));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const activeTenders = stats ? stats.active_tenders : 13;
+  const avgScore = stats ? stats.avg_match_score : 76;
+  const vaultScore = stats ? stats.vault_completeness : 82;
+
   return (
     <div className="page">
       <PageHeader
@@ -16,9 +33,9 @@ function Analytics() {
 
       {/* KPIs */}
       <div className="grid g-4">
-        <KPI label="Win rate" value="23%" delta="+9 pts" deltaDir="up" spark={[8,10,11,13,15,17,18,20,22,23]}/>
-        <KPI label="Tenders submitted" value="38" delta="+12" deltaDir="up" spark={[2,3,4,4,5,6,6,7,7,8]}/>
-        <KPI label="Avg bid value" value="R 18.4M" delta="+R 4.2M" deltaDir="up" spark={[12,13,14,14,15,16,16,17,18,18]}/>
+        <KPI label="Active tenders" value={String(activeTenders)} delta="+3" deltaDir="up" spark={[6,7,8,9,9,11,11,12,13,activeTenders]}/>
+        <KPI label="Avg bid readiness" value={avgScore + "%"} delta="+9 pts" deltaDir="up" spark={[58,60,63,67,68,70,72,74,75,avgScore]}/>
+        <KPI label="Vault completeness" value={vaultScore + "%"} delta="+14 pts" deltaDir="up" spark={[55,58,62,64,67,71,73,75,78,vaultScore]}/>
         <KPI label="AI hours saved" value="284" delta="+62" deltaDir="up" spark={[20,30,45,50,70,90,110,130,160,180]}/>
       </div>
 
@@ -83,11 +100,11 @@ function Analytics() {
         <div className="card card-pad">
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Compliance trend</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 12 }}>
-            <div className="tnum" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.025em" }}>82</div>
+            <div className="tnum" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.025em" }}>{vaultScore}</div>
             <div className="chip emerald" style={{ fontSize: 10 }}>+14 pts</div>
             <div style={{ fontSize: 12, color: "var(--text-3)" }}>this quarter</div>
           </div>
-          <Sparkline data={[55,58,62,64,67,71,73,75,78,80,82,82]} width={300} height={80} color="var(--emerald)"/>
+          <Sparkline data={[55,58,62,64,67,71,73,75,78,80,vaultScore,vaultScore]} width={300} height={80} color="var(--emerald)"/>
           <div className="divider" style={{ margin: "14px 0" }}/>
           <div className="col gap-2" style={{ fontSize: 12 }}>
             <div className="between"><span className="muted">Tax & financial</span><span className="mono tnum">96%</span></div>
@@ -111,7 +128,7 @@ function Analytics() {
           </div>
         </div>
         <div style={{ padding: "0 18px 18px" }}>
-          <MonthBars data={TENDER_ACTIVITY_MONTH} height={220}/>
+          <MonthBars data={activityData} height={220}/>
         </div>
       </div>
     </div>

@@ -1,8 +1,30 @@
-/* ---------- Tender Analysis (showcase page) ---------- */
-function TenderAnalysis({ onNav }) {
-  const t = TENDERS[0]; // SARS Cybersecurity
+/* ---------- Tender Analysis ---------- */
+function TenderAnalysis({ onNav, tenderId }) {
+  const [tenderData, setTenderData] = React.useState(null);
+  const [analysis, setAnalysis] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
   const [expanded, setExpanded] = React.useState(new Set(["req"]));
   const [aiPanelTab, setAiPanelTab] = React.useState("insights");
+
+  React.useEffect(() => {
+    if (!tenderId || !window.API || !API.isLoggedIn()) return;
+    setLoading(true);
+    const load = async () => {
+      try {
+        const [tRes, aRes] = await Promise.allSettled([
+          API.getTenders({ limit: 1 }).then(r => r.items.find(t => t._apiId === tenderId) || null),
+          API.getAnalysis(tenderId),
+        ]);
+        if (tRes.status === "fulfilled" && tRes.value) setTenderData(tRes.value);
+        if (aRes.status === "fulfilled" && aRes.value) setAnalysis(aRes.value);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [tenderId]);
+
+  const t = tenderData || TENDERS[0];
 
   const toggle = (k) => {
     const s = new Set(expanded);
@@ -25,16 +47,19 @@ function TenderAnalysis({ onNav }) {
                 <span className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{t.id}</span>
                 <span className="chip">{t.type}</span>
                 <RiskBadge risk={t.risk}/>
-                <span className="chip blue"><Icon.sparkles size={10}/>AI parsed · 12s</span>
+                <span className="chip blue">
+                  <Icon.sparkles size={10}/>
+                  {loading ? "loading…" : analysis ? "AI parsed" : "AI parsed · 12s"}
+                </span>
               </div>
               <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.022em", margin: 0, lineHeight: 1.18, maxWidth: 760, textWrap: "balance" }}>
                 {t.title}
               </h1>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 14, fontSize: 12.5, color: "var(--text-2)" }}>
                 <span><Icon.building size={12}/> {t.issuer}</span>
-                <span><Icon.globe size={12}/> {t.province}</span>
-                <span><Icon.calendar size={12}/> Published {t.publishedDate}</span>
-                <span><Icon.doc size={12}/> {t.pages} pages · {t.documents} appendices</span>
+                <span><Icon.globe size={12}/> {t.province || "National"}</span>
+                <span><Icon.calendar size={12}/> Published {t.publishedDate || "—"}</span>
+                <span><Icon.doc size={12}/> {t.pages || "—"} pages · {t.documents || "—"} appendices</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -50,18 +75,20 @@ function TenderAnalysis({ onNav }) {
           <div className="card" style={{ padding: 22, marginBottom: 16, background: "linear-gradient(135deg, var(--surface), color-mix(in oklab, var(--emerald-soft), var(--surface) 70%))" }}>
             <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto", gap: 30, alignItems: "center" }} className="ta-metrics">
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <Ring value={t.score} size={110} stroke={9}/>
+                <Ring value={t.score || 0} size={110} stroke={9}/>
                 <div>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Bid readiness</div>
-                  <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, letterSpacing: "-0.014em" }}>Strong match</div>
+                  <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, letterSpacing: "-0.014em" }}>
+                    {t.score >= 80 ? "Strong match" : t.score >= 60 ? "Good match" : "Needs attention"}
+                  </div>
                   <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4, maxWidth: 240 }}>
-                    7 of 10 mandatory requirements met. 2 require attention.
+                    {analysis && analysis.summary ? analysis.summary : "7 of 10 mandatory requirements met. 2 require attention."}
                   </div>
                 </div>
               </div>
               <div className="vdivider" style={{ height: 70 }}/>
-              <Metric label="Closes in" value={`${t.closingDays}`} unit="days" sub={t.deadline} tone="amber"/>
-              <Metric label="Contract value" value="R 24.5" unit="M" sub="5-year term"/>
+              <Metric label="Closes in" value={t.closingDays != null ? String(t.closingDays) : "—"} unit="days" sub={t.deadline || ""} tone="amber"/>
+              <Metric label="Contract value" value={t.value ? t.value.replace(/[^0-9.MBK]/g, "").replace(/(\d+\.?\d*).*/, "$1") : "—"} unit={t.value ? (t.value.includes("M") ? "M" : "") : ""} sub="contract value"/>
               <Metric label="Win probability" value="62" unit="%" sub="vs 28% peer avg" tone="emerald"/>
             </div>
           </div>
@@ -97,8 +124,11 @@ function TenderAnalysis({ onNav }) {
           <Section title="Mandatory requirements" sub="10 requirements detected · 7 pass · 2 caution · 1 fail" k="req" expanded={expanded} toggle={toggle}
                    right={<span className="chip"><Icon.sparkles size={10}/>AI extracted with citations</span>}>
             <div className="col gap-2">
-              {TENDER_REQUIREMENTS.map((r, i) => (
-                <RequirementRow key={r.id} r={r} index={i}/>
+              {(analysis && analysis.requirements && analysis.requirements.length
+                ? analysis.requirements
+                : TENDER_REQUIREMENTS
+              ).map((r, i) => (
+                <RequirementRow key={r.id || i} r={r} index={i}/>
               ))}
             </div>
           </Section>
@@ -206,9 +236,9 @@ function TenderAnalysis({ onNav }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-          {aiPanelTab === "insights" && <AIInsights/>}
+          {aiPanelTab === "insights" && <AIInsights analysis={analysis}/>}
           {aiPanelTab === "recs" && <AIRecs onNav={onNav}/>}
-          {aiPanelTab === "sources" && <AISources/>}
+          {aiPanelTab === "sources" && <AISources analysis={analysis}/>}
         </div>
 
         <div style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
@@ -277,7 +307,7 @@ function RequirementRow({ r }) {
     warn: { color: "var(--amber)", bg: "var(--amber-soft)", icon: <Icon.alert size={13}/> },
     fail: { color: "var(--red)", bg: "var(--red-soft)", icon: <Icon.x size={13}/> },
   };
-  const c = map[r.status];
+  const c = map[r.status] || map.warn;
   return (
     <div style={{ display: "flex", gap: 12, padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 9, background: "var(--surface)" }}>
       <div style={{ width: 26, height: 26, borderRadius: 7, background: c.bg, color: c.color, display: "grid", placeItems: "center", flexShrink: 0 }}>
@@ -285,7 +315,7 @@ function RequirementRow({ r }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>§{r.section}</span>
+          {r.section && <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>§{r.section}</span>}
           <span style={{ fontSize: 13, fontWeight: 500 }}>{r.text}</span>
         </div>
         {r.note && (
@@ -295,14 +325,14 @@ function RequirementRow({ r }) {
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <span className="chip"><Icon.doc size={10}/>p. {r.page}</span>
+        {r.page && <span className="chip"><Icon.doc size={10}/>p. {r.page}</span>}
         <StatusChip status={r.status}/>
       </div>
     </div>
   );
 }
 
-function AIInsights() {
+function AIInsights({ analysis }) {
   return (
     <div className="col gap-3">
       <div className="card card-pad-sm" style={{ background: "var(--surface)" }}>
@@ -312,7 +342,9 @@ function AIInsights() {
           <span className="chip emerald" style={{ marginLeft: "auto", fontSize: 10 }}>92% conf.</span>
         </div>
         <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text)", textWrap: "pretty" }}>
-          Submit — your <b>technical fit is strong</b> (86% match). Prioritise closing the reference and CrowdStrike gaps in the next 7 days. Price aggressively in the 90/10 split: peer median is <b className="mono">R 22.8M</b>.
+          {analysis && analysis.recommendation
+            ? analysis.recommendation
+            : "Submit — your technical fit is strong (86% match). Prioritise closing the reference and CrowdStrike gaps in the next 7 days. Price aggressively in the 90/10 split: peer median is R 22.8M."}
         </div>
       </div>
 
@@ -401,18 +433,21 @@ function AIRecs({ onNav }) {
   );
 }
 
-function AISources() {
-  return (
-    <div className="col gap-2">
-      <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 2, fontWeight: 600 }}>Cited from source PDF</div>
-      {[
+function AISources({ analysis }) {
+  const sources = analysis && analysis.citations && analysis.citations.length
+    ? analysis.citations.map(c => ({ p: c.page, sec: c.section, t: c.snippet || "Source excerpt" }))
+    : [
         { p: 14, sec: "3.1–3.3", t: "Bidder eligibility & mandatory registration" },
         { p: 18, sec: "3.7", t: "Reference requirements (3 minimum)" },
         { p: 19, sec: "3.8", t: "Personnel certification matrix" },
         { p: 22, sec: "4.0", t: "Document submission list" },
         { p: 27, sec: "5.0", t: "Submission instructions" },
         { p: 31, sec: "6.0", t: "Evaluation criteria & weighting" },
-      ].map((s, i) => (
+      ];
+  return (
+    <div className="col gap-2">
+      <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 2, fontWeight: 600 }}>Cited from source PDF</div>
+      {sources.map((s, i) => (
         <div key={i} className="card card-pad-sm" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <div style={{ width: 32, height: 40, borderRadius: 4, background: "var(--surface-2)", border: "1px solid var(--border)", display: "grid", placeItems: "center", flexShrink: 0 }}>
             <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>p.{s.p}</span>

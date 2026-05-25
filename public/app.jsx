@@ -2,10 +2,20 @@
 const { useState: useStateApp, useEffect: useEffectApp } = React;
 
 function App() {
-  // routing: "landing" | "auth" | <page-id>
   const [route, setRoute] = useStateApp("landing");
   const [theme, setTheme] = useStateApp(() => localStorage.getItem("tp-theme") || "light");
   const [cmdOpen, setCmdOpen] = useStateApp(false);
+  const [user, setUser] = useStateApp(null);
+  const [activeTenderId, setActiveTenderId] = useStateApp(null);
+
+  // Restore session from stored token
+  useEffectApp(() => {
+    if (window.API && API.isLoggedIn()) {
+      API.me()
+        .then(u => { setUser(u); setRoute("dashboard"); })
+        .catch(() => { API.logout(); });
+    }
+  }, []);
 
   useEffectApp(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -14,39 +24,34 @@ function App() {
 
   useEffectApp(() => {
     const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCmdOpen(o => !o);
-      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(o => !o); }
       if (e.key === "Escape") setCmdOpen(false);
     };
     const openCmd = () => setCmdOpen(true);
     window.addEventListener("keydown", onKey);
     window.addEventListener("open-cmd", openCmd);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("open-cmd", openCmd);
-    };
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("open-cmd", openCmd); };
   }, []);
 
-  const navigate = (page) => {
+  const navigate = (page, meta) => {
+    if (meta && meta.tenderId) setActiveTenderId(meta.tenderId);
     setRoute(page);
     setCmdOpen(false);
-    if (page === "auth") return;
-    if (page === "landing") return;
   };
 
-  // Landing / Auth: bare pages without app shell
-  if (route === "landing") return <><Landing onEnter={() => setRoute("auth")}/><PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme}/></>;
-  if (route === "auth") return <><Auth onEnter={() => setRoute("dashboard")}/><PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme}/></>;
+  const handleAuth = (u) => { setUser(u); setRoute("dashboard"); };
+  const handleLogout = () => { if (window.API) API.logout(); setUser(null); setRoute("landing"); };
+
+  if (route === "landing") return <><Landing onEnter={() => setRoute("auth")}/><PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme} user={user} onLogout={handleLogout}/></>;
+  if (route === "auth") return <><Auth onEnter={handleAuth}/><PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme} user={user} onLogout={handleLogout}/></>;
 
   const pages = {
-    dashboard:  <Dashboard onNav={navigate}/>,
+    dashboard:  <Dashboard onNav={navigate} user={user}/>,
     tenders:    <TendersList onNav={navigate}/>,
     upload:     <TenderUpload onNav={navigate}/>,
-    analysis:   <TenderAnalysis onNav={navigate}/>,
-    chat:       <AIChat onNav={navigate}/>,
-    builder:    <ProposalBuilder onNav={navigate}/>,
+    analysis:   <TenderAnalysis onNav={navigate} tenderId={activeTenderId}/>,
+    chat:       <AIChat onNav={navigate} activeTenderId={activeTenderId}/>,
+    builder:    <ProposalBuilder onNav={navigate} activeTenderId={activeTenderId}/>,
     compliance: <CompliancePage onNav={navigate}/>,
     vault:      <DocumentVault onNav={navigate}/>,
     analytics:  <Analytics/>,
@@ -59,9 +64,9 @@ function App() {
     dashboard: ["Workspace", "Dashboard"],
     tenders: ["Workspace", "Tenders"],
     upload: ["Workspace", "Upload tender"],
-    analysis: ["Workspace", "Tenders", "RFB 2025/IT/0142"],
+    analysis: ["Workspace", "Tenders", "Analysis"],
     chat: ["Workspace", "AI Assistant"],
-    builder: ["Proposals", "SARS Cybersecurity bid"],
+    builder: ["Proposals", "Proposal Builder"],
     compliance: ["Proposals", "Compliance"],
     vault: ["Proposals", "Document Vault"],
     analytics: ["Insights", "Analytics"],
@@ -70,7 +75,6 @@ function App() {
     admin: ["Account", "Admin"],
   };
 
-  // Full-bleed pages (chat / analysis / builder) handle their own scroll
   const fullBleed = ["analysis", "chat", "builder"].includes(route);
 
   return (
@@ -84,6 +88,8 @@ function App() {
             onCmd={() => setCmdOpen(true)}
             onTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
             theme={theme}
+            user={user}
+            onLogout={handleLogout}
           />
           {fullBleed ? (
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -97,13 +103,12 @@ function App() {
         </div>
       </div>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNav={navigate}/>
-      <PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme}/>
+      <PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme} user={user} onLogout={handleLogout}/>
     </>
   );
 }
 
-/* Floating toolbar to surface landing/auth from the app */
-function PageNavToolbar({ setRoute, theme, setTheme }) {
+function PageNavToolbar({ setRoute, theme, setTheme, user, onLogout }) {
   const [open, setOpen] = React.useState(false);
   return (
     <div style={{ position: "fixed", bottom: 16, right: 16, zIndex: 60, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
@@ -130,6 +135,12 @@ function PageNavToolbar({ setRoute, theme, setTheme }) {
             </div>
           ))}
           <div className="divider" style={{ margin: "6px 0" }}/>
+          {user && (
+            <div className="nav-item" style={{ margin: 0, padding: "6px 10px", fontSize: 12, color: "var(--red)" }}
+                 onClick={() => { onLogout(); setOpen(false); }}>
+              Sign out
+            </div>
+          )}
           <div className="nav-item" style={{ margin: 0, padding: "6px 10px", fontSize: 12 }}
                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? "Switch to light" : "Switch to dark"}

@@ -2,25 +2,43 @@
 function DocumentVault({ onNav }) {
   const [filter, setFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
+  const [allDocs, setAllDocs] = React.useState(COMPLIANCE_DOCS);
+  const [uploading, setUploading] = React.useState(false);
+  const fileInputRef = React.useRef();
 
-  const categories = [
-    { id: "all", label: "All", count: COMPLIANCE_DOCS.length },
-    { id: "CSD", label: "CSD", count: COMPLIANCE_DOCS.filter(d => d.category === "CSD").length },
-    { id: "Tax", label: "Tax", count: COMPLIANCE_DOCS.filter(d => d.category === "Tax").length },
-    { id: "B-BBEE", label: "B-BBEE", count: COMPLIANCE_DOCS.filter(d => d.category === "B-BBEE").length },
-    { id: "CIPC", label: "CIPC", count: COMPLIANCE_DOCS.filter(d => d.category === "CIPC").length },
-    { id: "Insurance", label: "Insurance", count: COMPLIANCE_DOCS.filter(d => d.category === "Insurance").length },
-    { id: "Bank Letter", label: "Bank Letter", count: COMPLIANCE_DOCS.filter(d => d.category === "Bank Letter").length },
-    { id: "SBD Forms", label: "SBD Forms", count: COMPLIANCE_DOCS.filter(d => d.category === "SBD Forms").length },
-    { id: "Capability", label: "Capability", count: COMPLIANCE_DOCS.filter(d => d.category === "Capability").length },
-  ];
+  React.useEffect(() => {
+    if (!window.API || !API.isLoggedIn()) return;
+    API.getDocuments().then(docs => { if (docs && docs.length) setAllDocs(docs); }).catch(() => {});
+  }, []);
 
-  const docs = COMPLIANCE_DOCS
+  const handleFileChange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !window.API || !API.isLoggedIn()) return;
+    setUploading(true);
+    try {
+      const doc = await API.uploadDocument(file, "Other", file.name);
+      setAllDocs(d => [...d, doc]);
+    } catch (err) {
+      // silent — user sees no change
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const catIds = ["all","CSD","Tax","B-BBEE","CIPC","Insurance","Bank Letter","SBD Forms","Capability"];
+  const categories = catIds.map(id => ({
+    id, label: id === "all" ? "All" : id,
+    count: id === "all" ? allDocs.length : allDocs.filter(d => d.category === id).length,
+  }));
+
+  const docs = allDocs
     .filter(d => filter === "all" || d.category === filter)
     .filter(d => !search || d.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="page">
+      <input ref={fileInputRef} type="file" accept=".pdf,.docx,.jpg,.png" style={{ display: "none" }} onChange={handleFileChange}/>
       <PageHeader
         eyebrow="Compliance"
         title="Document Vault"
@@ -28,17 +46,19 @@ function DocumentVault({ onNav }) {
         actions={
           <>
             <button className="btn btn-sm"><Icon.download size={13}/> Export bundle</button>
-            <button className="btn btn-sm btn-primary"><Icon.plus size={13}/> Upload document</button>
+            <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={uploading}>
+              <Icon.plus size={13}/> {uploading ? "Uploading…" : "Upload document"}
+            </button>
           </>
         }
       />
 
       {/* Stats */}
       <div className="grid g-4" style={{ marginBottom: 16 }}>
-        <KPI label="Documents stored" value={String(COMPLIANCE_DOCS.length)} delta="+2" deltaDir="up" spark={[7,8,8,9,9,10,11,11]}/>
-        <KPI label="Valid & in-date" value={String(COMPLIANCE_DOCS.filter(d => d.status === "valid").length)} delta="0" deltaDir="up"/>
-        <KPI label="Expiring < 30 days" value={String(COMPLIANCE_DOCS.filter(d => d.status === "expiring").length)} delta="+2" deltaDir="down"/>
-        <KPI label="Missing" value={String(COMPLIANCE_DOCS.filter(d => d.status === "missing").length)} delta="-1" deltaDir="up"/>
+        <KPI label="Documents stored" value={String(allDocs.length)} delta="+2" deltaDir="up" spark={[7,8,8,9,9,10,11,11]}/>
+        <KPI label="Valid & in-date" value={String(allDocs.filter(d => d.status === "valid").length)} delta="0" deltaDir="up"/>
+        <KPI label="Expiring < 30 days" value={String(allDocs.filter(d => d.status === "expiring").length)} delta="+2" deltaDir="down"/>
+        <KPI label="Missing" value={String(allDocs.filter(d => d.status === "missing").length)} delta="-1" deltaDir="up"/>
       </div>
 
       {/* Upload zone */}
@@ -63,7 +83,7 @@ function DocumentVault({ onNav }) {
           </div>
           <div className="row gap-2">
             <button className="btn btn-sm">From cloud</button>
-            <button className="btn btn-sm btn-primary">Choose files</button>
+            <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current && fileInputRef.current.click()}>Choose files</button>
           </div>
         </div>
       </div>
@@ -116,7 +136,7 @@ function DocCard({ d }) {
           <>
             <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", flexDirection: "column", gap: 3 }}>
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} style={{ height: 2, background: "var(--border-strong)", borderRadius: 2, width: `${60 + Math.random()*30}%`, opacity: 0.6 - i * 0.07 }}/>
+                <div key={i} style={{ height: 2, background: "var(--border-strong)", borderRadius: 2, width: `${60 + (i * 13) % 30}%`, opacity: 0.6 - i * 0.07 }}/>
               ))}
             </div>
             <Icon.doc size={26} style={{ color: "var(--text-3)", opacity: .55, position: "absolute", bottom: 10, right: 12 }}/>
