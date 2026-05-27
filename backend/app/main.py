@@ -11,13 +11,47 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api.router import api_router
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, SessionLocal
 
 logging.basicConfig(
     level=logging.INFO if not settings.debug else logging.DEBUG,
     format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
 )
 logger = logging.getLogger("tenderpilot")
+
+
+async def _seed_demo_user() -> None:
+    """Create demo account on first boot if it doesn't exist yet."""
+    from sqlalchemy import select
+    from app.models.company import Company
+    from app.models.user import ROLE_OWNER, User
+    from app.security import hash_password
+
+    DEMO_EMAIL = "demo@tenderpilot.ai"
+    DEMO_PASSWORD = "TenderPilot123!"
+
+    try:
+        async with SessionLocal() as db:
+            existing = (
+                await db.execute(select(User).where(User.email == DEMO_EMAIL))
+            ).scalar_one_or_none()
+            if existing:
+                return
+            company = Company(name="TenderPilot Demo Co.")
+            db.add(company)
+            await db.flush()
+            user = User(
+                email=DEMO_EMAIL,
+                hashed_password=hash_password(DEMO_PASSWORD),
+                full_name="Demo User",
+                role=ROLE_OWNER,
+                company_id=company.id,
+            )
+            db.add(user)
+            await db.commit()
+            logger.info("Demo user seeded: %s", DEMO_EMAIL)
+    except Exception as exc:
+        logger.warning("Demo user seed failed (%s) — skipping", exc)
 
 
 @asynccontextmanager
@@ -29,6 +63,9 @@ async def lifespan(app: FastAPI):
             logger.info("Database initialized (auto create_all, %s)", settings.database_url.split("://")[0])
         except Exception as exc:
             logger.warning("auto_create_db failed (%s) — continuing startup", exc)
+
+    await _seed_demo_user()
+
     logger.info(
         "TenderPilot AI %s starting — env=%s ai_enabled=%s storage=%s",
         __version__, settings.environment, settings.ai_enabled, settings.storage_backend,
