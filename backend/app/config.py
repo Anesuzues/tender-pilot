@@ -47,9 +47,9 @@ class Settings(BaseSettings):
     refresh_token_expire_minutes: int = 60 * 24 * 14  # 14 days
 
     # --- CORS ---
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://localhost:5173", "*"]
-    )
+    # Set CORS_ORIGINS env var to comma-separated domains in production.
+    # Defaults to localhost in dev, locked Vercel URLs in production.
+    cors_origins: list[str] = Field(default_factory=list)
 
     # --- Database ---
     # SQLite (async) by default; set DATABASE_URL to a postgresql+asyncpg DSN
@@ -99,6 +99,18 @@ class Settings(BaseSettings):
 
     # --- Uploads ---
     max_upload_mb: int = 50
+
+    @property
+    def effective_cors_origins(self) -> list[str]:
+        if self.cors_origins:
+            return self.cors_origins
+        if self.environment == "production":
+            return [
+                "https://tender-pilot-seven.vercel.app",
+                "https://tender-pilot-anesu-kamombes-projects.vercel.app",
+                "https://tender-pilot-git-main-anesu-kamombes-projects.vercel.app",
+            ]
+        return ["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"]
 
     @property
     def is_postgres(self) -> bool:

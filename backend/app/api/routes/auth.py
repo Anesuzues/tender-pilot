@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 
 import jwt
@@ -24,6 +26,7 @@ from app.security import create_token, decode_token, hash_password, verify_passw
 from app.services.events import audit, track
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_limiter = Limiter(key_func=get_remote_address)
 
 
 def _tokens(user: User) -> TokenPair:
@@ -34,7 +37,8 @@ def _tokens(user: User) -> TokenPair:
 
 
 @router.post("/register", response_model=AuthResult, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: DbSession) -> AuthResult:
+@_limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterRequest, db: DbSession) -> AuthResult:
     existing = (
         await db.execute(select(User).where(User.email == payload.email.lower()))
     ).scalar_one_or_none()
@@ -86,7 +90,8 @@ async def login_form(
 
 
 @router.post("/login/json", response_model=AuthResult)
-async def login_json(payload: LoginRequest, db: DbSession) -> AuthResult:
+@_limiter.limit("10/minute")
+async def login_json(request: Request, payload: LoginRequest, db: DbSession) -> AuthResult:
     user = await _authenticate(db, payload.email, payload.password)
     await audit(db, user.id, "user.login", "user", user.id)
     return AuthResult(user=UserOut.model_validate(user), tokens=_tokens(user))

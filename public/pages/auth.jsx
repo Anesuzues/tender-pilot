@@ -28,7 +28,9 @@ function Auth({ onEnter, mode = "login" }) {
         });
         onEnter(u);
       } else {
-        onEnter({});
+        // Forgot password — email not yet configured
+        setLoading(false);
+        setError("Password reset emails are not enabled yet. Email support@tenderpilot.ai with your registered address and we'll reset it manually.");
       }
     } catch (e) {
       setError(e.message || "Something went wrong. Please try again.");
