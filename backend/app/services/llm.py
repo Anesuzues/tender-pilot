@@ -69,6 +69,30 @@ async def _openai_complete(system: str, messages: list[LLMMessage]) -> str:  # p
     return data["choices"][0]["message"]["content"]
 
 
+async def _gemini_complete(system: str, messages: list[LLMMessage]) -> str:  # pragma: no cover
+    import httpx
+
+    model = settings.llm_model if "gemini" in settings.llm_model else "gemini-2.0-flash"
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={settings.gemini_api_key}"
+    )
+    contents = []
+    for m in messages:
+        role = "model" if m.role == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": m.content}]})
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 1500, "temperature": 0.3},
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post(url, json=payload)
+        r.raise_for_status()
+        data = r.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
 _SENT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -116,6 +140,8 @@ async def complete(system: str, messages: list[LLMMessage]) -> str:
             return await _anthropic_complete(system, messages)
         if provider == "openai" and settings.openai_api_key:
             return await _openai_complete(system, messages)
+        if provider == "gemini" and settings.gemini_api_key:
+            return await _gemini_complete(system, messages)
     except Exception:
         # Never let a provider outage break the request — degrade to stub.
         pass

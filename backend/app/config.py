@@ -76,10 +76,11 @@ class Settings(BaseSettings):
     # --- AI / RAG ---
     # When no provider key is configured the backend uses a deterministic local
     # stub so every endpoint (analysis, chat, proposals) still works offline.
-    llm_provider: Literal["anthropic", "openai", "stub"] = "stub"
+    llm_provider: Literal["anthropic", "openai", "gemini", "stub"] = "stub"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
-    llm_model: str = "claude-sonnet-4-6"
+    gemini_api_key: str | None = None
+    llm_model: str = "gemini-2.0-flash"
     embedding_provider: Literal["openai", "local"] = "local"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 256  # local hashing-embedder dimensionality
@@ -118,7 +119,7 @@ class Settings(BaseSettings):
 
     @property
     def ai_enabled(self) -> bool:
-        return bool(self.anthropic_api_key or self.openai_api_key)
+        return bool(self.anthropic_api_key or self.openai_api_key or self.gemini_api_key)
 
 
 @lru_cache
