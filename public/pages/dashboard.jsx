@@ -1,12 +1,14 @@
 /* ---------- Dashboard ---------- */
 function Dashboard({ onNav, user }) {
-  const [tenders, setTenders] = React.useState(TENDERS);
+  const isLoggedIn = window.API && API.isLoggedIn();
+  const [tenders, setTenders] = React.useState(isLoggedIn ? [] : TENDERS);
   const [stats, setStats] = React.useState(null);
   const [activityData, setActivityData] = React.useState(TENDER_ACTIVITY_MONTH);
+  const [loaded, setLoaded] = React.useState(!isLoggedIn);
 
   React.useEffect(() => {
     if (!window.API || !API.isLoggedIn()) return;
-    API.getTenders({ limit: 20 }).then(r => { if (r.items.length) setTenders(r.items); }).catch(() => {});
+    API.getTenders({ limit: 20 }).then(r => { setTenders(r.items); setLoaded(true); }).catch(() => setLoaded(true));
     API.getAnalytics().then(d => {
       setStats(d.stats);
       if (d.activity_by_month && d.activity_by_month.length) {
@@ -93,6 +95,11 @@ function Dashboard({ onNav, user }) {
                 <tr><th>Tender</th><th>Issuer</th><th>Closes</th><th style={{ textAlign: "right" }}>Value</th><th>Match</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
+                {loaded && tenders.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: "center", padding: "32px 0", color: "var(--text-3)", fontSize: 13 }}>
+                    No tenders yet — <a style={{ color: "var(--emerald)", cursor: "pointer", fontWeight: 500 }} onClick={() => onNav("upload")}>upload your first tender</a>
+                  </td></tr>
+                )}
                 {tenders.slice(0, 6).map(t => (
                   <tr key={t._apiId || t.id} style={{ cursor: "pointer" }} onClick={() => onNav("analysis", t._apiId ? { tenderId: t._apiId } : {})}>
                     <td>

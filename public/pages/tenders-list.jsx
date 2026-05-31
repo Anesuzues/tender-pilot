@@ -2,13 +2,14 @@
 function TendersList({ onNav }) {
   const [view, setView] = React.useState("table");
   const [filter, setFilter] = React.useState("all");
-  const [allTenders, setAllTenders] = React.useState(TENDERS);
-  const [loading, setLoading] = React.useState(false);
+  const isLoggedIn = window.API && API.isLoggedIn();
+  const [allTenders, setAllTenders] = React.useState(isLoggedIn ? [] : TENDERS);
+  const [loading, setLoading] = React.useState(isLoggedIn);
 
   React.useEffect(() => {
     if (!window.API || !API.isLoggedIn()) return;
     setLoading(true);
-    API.getTenders({ limit: 50 }).then(r => { if (r.items.length) setAllTenders(r.items); }).catch(() => {}).finally(() => setLoading(false));
+    API.getTenders({ limit: 50 }).then(r => { setAllTenders(r.items); }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const filters = ["all", "in-review", "draft", "shortlisted", "flagged"];
@@ -55,6 +56,11 @@ function TendersList({ onNav }) {
                 <tr><th>Tender</th><th>Issuer</th><th>Closes</th><th style={{ textAlign: "right" }}>Value</th><th>B-BBEE</th><th>Risk</th><th>Match</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
+                {!loading && tenders.length === 0 && (
+                  <tr><td colSpan={9} style={{ textAlign: "center", padding: "48px 0", color: "var(--text-3)", fontSize: 13 }}>
+                    No tenders yet — <a style={{ color: "var(--emerald)", cursor: "pointer", fontWeight: 500 }} onClick={() => onNav("upload")}>upload your first tender</a>
+                  </td></tr>
+                )}
                 {tenders.map(t => (
                   <tr key={t._apiId || t.id} onClick={() => onNav("analysis", t._apiId ? { tenderId: t._apiId } : {})} style={{ cursor: "pointer" }}>
                     <td>
