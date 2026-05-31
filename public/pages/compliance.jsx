@@ -1,5 +1,21 @@
 /* ---------- Compliance Checklist ---------- */
 function CompliancePage({ onNav }) {
+  const isLoggedIn = window.API && API.isLoggedIn();
+  const [vaultDocs, setVaultDocs] = React.useState(null);
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isLoggedIn) { setLoaded(true); return; }
+    API.getDocuments()
+      .then(docs => { setVaultDocs(docs || []); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  // When logged in, render the real vault-driven view
+  if (isLoggedIn) {
+    return <ComplianceLive docs={vaultDocs} loaded={loaded} onNav={onNav}/>;
+  }
+
   const groups = [
     {
       id: "g1", title: "Statutory & Registration", weight: 30,
@@ -142,6 +158,120 @@ function CompliancePage({ onNav }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* Real compliance view derived from the user's Document Vault */
+function ComplianceLive({ docs, loaded, onNav }) {
+  // Canonical compliance categories every SA bidder needs
+  const REQUIRED = [
+    { category: "CSD", label: "CSD registration", group: "Statutory & Registration", weight: 30 },
+    { category: "CIPC", label: "CIPC company disclosure", group: "Statutory & Registration", weight: 30 },
+    { category: "Tax", label: "Tax Clearance / PIN", group: "Tax & Financial", weight: 25 },
+    { category: "Bank Letter", label: "Bank confirmation letter", group: "Tax & Financial", weight: 25 },
+    { category: "B-BBEE", label: "B-BBEE certificate / affidavit", group: "Transformation", weight: 20 },
+    { category: "Insurance", label: "Insurance cover", group: "Insurance & Risk", weight: 15 },
+    { category: "SBD Forms", label: "SBD forms", group: "SBD Forms", weight: 10 },
+  ];
+
+  const list = docs || [];
+  const byCategory = (cat) => list.filter(d => d.category === cat);
+  const statusFor = (cat) => {
+    const found = byCategory(cat);
+    if (found.length === 0) return "fail";
+    if (found.some(d => d.status === "expired")) return "fail";
+    if (found.some(d => d.status === "expiring")) return "warn";
+    return "pass";
+  };
+
+  const checked = REQUIRED.map(r => ({ ...r, status: statusFor(r.category), count: byCategory(r.category).length }));
+  const pass = checked.filter(c => c.status === "pass").length;
+  const warn = checked.filter(c => c.status === "warn").length;
+  const fail = checked.filter(c => c.status === "fail").length;
+  const overall = Math.round((pass / checked.length) * 100);
+
+  // group rows
+  const groupNames = [...new Set(checked.map(c => c.group))];
+
+  return (
+    <div className="page">
+      <PageHeader
+        eyebrow="Compliance"
+        title="Compliance Checklist"
+        subtitle="Live readiness based on the documents in your vault. Upload documents to mark items compliant."
+        actions={<>
+          <button className="btn btn-sm btn-primary" onClick={() => onNav("vault")}><Icon.plus size={13}/> Add documents</button>
+        </>}
+      />
+
+      {!loaded ? (
+        <div style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
+          <span className="spin" style={{ display: "inline-block", width: 20, height: 20, borderRadius: 999, border: "2.5px solid var(--border-strong)", borderTopColor: "var(--emerald)" }}/>
+        </div>
+      ) : (
+        <>
+          {/* Hero */}
+          <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto", gap: 30, alignItems: "center" }} className="ta-metrics">
+              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                <Ring value={overall} size={108}/>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Compliance score</div>
+                  <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6 }}>
+                    {overall >= 80 ? "Strong" : overall >= 50 ? "Needs attention" : "Action required"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4, maxWidth: 280 }}>
+                    {fail > 0 ? `${fail} required document${fail !== 1 ? "s" : ""} missing or expired.` : "All core documents present."}
+                  </div>
+                </div>
+              </div>
+              <div className="vdivider" style={{ height: 70 }}/>
+              <Metric label="Compliant" value={String(pass)} unit={`/ ${checked.length}`} sub="items" tone="emerald"/>
+              <Metric label="Warnings" value={String(warn)} unit="items" sub="expiring" tone="amber"/>
+              <Metric label="Missing" value={String(fail)} unit="items" sub="must add" tone={fail > 0 ? "" : "emerald"}/>
+            </div>
+          </div>
+
+          {/* Grouped checklist from real docs */}
+          <div className="col gap-3">
+            {groupNames.map(gname => {
+              const items = checked.filter(c => c.group === gname);
+              const gpass = items.filter(i => i.status === "pass").length;
+              const pct = Math.round((gpass / items.length) * 100);
+              return (
+                <div key={gname} className="card" style={{ padding: 0 }}>
+                  <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+                    <Ring value={pct} size={42} stroke={4}/>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{gname}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>{gpass} of {items.length} items present</div>
+                    </div>
+                    <span className="chip">{pct}%</span>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--border)" }}>
+                    {items.map((it, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                        <StatusIconBox status={it.status}/>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{it.label}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
+                            {it.count > 0 ? `${it.count} document${it.count !== 1 ? "s" : ""} in vault` : "No document uploaded"}
+                          </div>
+                        </div>
+                        <StatusChip status={it.status}/>
+                        {it.status !== "pass" && (
+                          <button className="btn btn-sm" onClick={() => onNav("vault")}>{it.status === "fail" ? "Upload" : "Renew"}</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

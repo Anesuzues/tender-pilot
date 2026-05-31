@@ -139,6 +139,7 @@ function Topbar({ pageTitle, breadcrumb, onCmd, onTheme, theme, user, onLogout, 
       <button className="btn btn-ghost btn-icon" title="Toggle theme" onClick={onTheme}>
         {theme === "dark" ? <Icon.sun size={15}/> : <Icon.moon size={15}/>}
       </button>
+      <NotificationBell loggedIn={!!user}/>
       <div className="vdivider" style={{ height: 22, margin: "0 4px" }}/>
       <Avatar name={displayName || "User"}/>
 
@@ -150,6 +151,76 @@ function Topbar({ pageTitle, breadcrumb, onCmd, onTheme, theme, user, onLogout, 
           .topbar-search-kbd { display: none; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function NotificationBell({ loggedIn }) {
+  const [open, setOpen] = React.useState(false);
+  const [items, setItems] = React.useState([]);
+  const [loaded, setLoaded] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    if (!window.API || !API.isLoggedIn()) { setLoaded(true); return; }
+    API.getNotifications()
+      .then(list => { setItems(Array.isArray(list) ? list : []); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  React.useEffect(() => { if (loggedIn) load(); }, [loggedIn, load]);
+  React.useEffect(() => {
+    if (open) load();
+    const onDoc = (e) => { if (!e.target.closest(".notif-wrap")) setOpen(false); };
+    if (open) document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [open, load]);
+
+  const unread = items.filter(n => !n.is_read).length;
+
+  const markAll = async () => {
+    try { await API.markAllNotificationsRead(); setItems(items.map(n => ({ ...n, is_read: true }))); } catch {}
+  };
+  const markOne = async (n) => {
+    if (n.is_read) return;
+    try { await API.markNotificationRead(n.id); setItems(items.map(x => x.id === n.id ? { ...x, is_read: true } : x)); } catch {}
+  };
+
+  return (
+    <div className="notif-wrap" style={{ position: "relative" }}>
+      <button className="btn btn-ghost btn-icon" title="Notifications" style={{ position: "relative" }}
+              onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}>
+        <Icon.bell size={15}/>
+        {unread > 0 && (
+          <span style={{ position: "absolute", top: 4, right: 4, minWidth: 14, height: 14, padding: "0 3px", background: "var(--red)", borderRadius: 999, border: "1.5px solid var(--bg-elev)", fontSize: 8.5, color: "white", display: "grid", placeItems: "center", fontWeight: 700 }}>{unread}</span>
+        )}
+      </button>
+      {open && (
+        <div className="card" style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: 340, maxWidth: "calc(100vw - 24px)", maxHeight: 440, overflowY: "auto", boxShadow: "var(--shadow-lg)", zIndex: 60, padding: 0 }}>
+          <div className="between" style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--surface)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Notifications</div>
+            {unread > 0 && <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }} onClick={markAll}>Mark all read</button>}
+          </div>
+          <div>
+            {!loaded && <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>Loading…</div>}
+            {loaded && items.length === 0 && (
+              <div style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>
+                <Icon.bell size={20} style={{ opacity: .4, marginBottom: 8 }}/>
+                <div>You're all caught up.</div>
+              </div>
+            )}
+            {items.map(n => (
+              <div key={n.id} onClick={() => markOne(n)}
+                   style={{ display: "flex", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--border)", cursor: "pointer", background: n.is_read ? "transparent" : "var(--emerald-soft)" }}>
+                <div style={{ width: 7, height: 7, borderRadius: 999, marginTop: 5, flexShrink: 0, background: n.is_read ? "var(--border-strong)" : "var(--emerald)" }}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.4 }}>{n.title}</div>
+                  {n.body && <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.45 }}>{n.body}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -224,4 +295,4 @@ function CommandPalette({ open, onClose, onNav, tenders }) {
   );
 }
 
-Object.assign(window, { Sidebar, Topbar, CommandPalette });
+Object.assign(window, { Sidebar, Topbar, CommandPalette, NotificationBell });

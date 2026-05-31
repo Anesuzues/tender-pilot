@@ -1,21 +1,55 @@
 /* ---------- Company Profile ---------- */
 function CompanyProfile() {
   const [company, setCompany] = React.useState(null);
+  const [form, setForm] = React.useState({});
+  const [saving, setSaving] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
     if (!window.API || !API.isLoggedIn()) return;
-    API.getCompany().then(c => { if (c) setCompany(c); }).catch(() => {});
+    API.getCompany().then(c => { if (c) { setCompany(c); setForm(c); } }).catch(() => {});
   }, []);
 
-  const completeness = 84;
+  const setField = (k, v) => { setForm(f => ({ ...f, [k]: v })); setSaved(false); };
+
+  const handleSave = async () => {
+    if (!window.API || !API.isLoggedIn()) return;
+    setSaving(true); setError(null);
+    const payload = {
+      name: form.name, registration_number: form.registration_number,
+      vat_number: form.vat_number, csd_number: form.csd_number,
+      industry: form.industry, province: form.province,
+      contact_email: form.contact_email, contact_phone: form.contact_phone,
+      bbbee_level: form.bbbee_level ? parseInt(form.bbbee_level) : undefined,
+    };
+    try {
+      let updated;
+      if (company) {
+        updated = await API.updateCompany(payload);
+      } else {
+        updated = await API.createCompany({ name: form.name || "My Company", ...payload });
+      }
+      setCompany(updated); setForm(updated); setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setError(e.message || "Could not save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Completeness from real filled fields
+  const coreFields = ["name", "registration_number", "vat_number", "csd_number", "industry", "province", "contact_email", "contact_phone"];
+  const filled = coreFields.filter(k => form[k]).length;
+  const completeness = Math.round((filled / coreFields.length) * 100);
   const sections = [
-    { id: "info", t: "Company information", done: true },
-    { id: "industry", t: "Industry & services", done: true },
-    { id: "bbbee", t: "B-BBEE & ownership", done: true },
-    { id: "certs", t: "Certifications", done: true },
-    { id: "team", t: "Team & capacity", done: false },
-    { id: "geo", t: "Geographic coverage", done: true },
-    { id: "cap", t: "Capability statements", done: false },
+    { id: "info", t: "Company information", done: !!(form.name && form.registration_number) },
+    { id: "industry", t: "Industry & services", done: !!form.industry },
+    { id: "bbbee", t: "B-BBEE & ownership", done: !!form.bbbee_level },
+    { id: "contact", t: "Contact details", done: !!(form.contact_email && form.contact_phone) },
+    { id: "tax", t: "Tax & registration", done: !!(form.vat_number && form.csd_number) },
+    { id: "geo", t: "Province", done: !!form.province },
   ];
 
   return (
@@ -25,10 +59,15 @@ function CompanyProfile() {
         title="Company Profile"
         subtitle="Your master record. Used to auto-fill SBD forms, eligibility checks, and AI proposal drafting."
         actions={<>
-          <button className="btn btn-sm"><Icon.download size={13}/> Export profile</button>
-          <button className="btn btn-sm btn-primary"><Icon.check size={13}/> Save changes</button>
+          <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving}>
+            <Icon.check size={13}/> {saving ? "Saving…" : saved ? "Saved ✓" : "Save changes"}
+          </button>
         </>}
       />
+
+      {error && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(239,68,68,.08)", border: "1px solid var(--red)", borderRadius: 8, fontSize: 12.5, color: "var(--red)" }}>{error}</div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }} className="cp-grid">
         {/* Sidebar */}
@@ -71,92 +110,54 @@ function CompanyProfile() {
                 color: "white", display: "grid", placeItems: "center",
                 fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em",
                 flexShrink: 0,
-              }}>{company ? company.name.slice(0,2).toUpperCase() : "?"}</div>
+              }}>{form.name ? form.name.slice(0,2).toUpperCase() : "?"}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.014em" }}>{company ? company.name : "Your Company"}</div>
-                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>{company ? (company.province || "") : "Complete your profile below"}</div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                  <span className="chip emerald"><span className="chip-dot"/>Active</span>
-                  <span className="chip">CIPC verified</span>
-                  <span className="chip blue"><Icon.sparkles size={10}/>CSD synced</span>
-                </div>
+                <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.014em" }}>{form.name || "Your Company"}</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>{form.province || "Complete your profile below"}</div>
               </div>
-              <button className="btn btn-sm">Change logo</button>
             </div>
             <div className="grid g-2">
-              <Field label="Legal name" value={company ? company.name : "—"}/>
-              <Field label="Registration number" value={company ? (company.registration_number || "Not set") : "—"} mono/>
-              <Field label="VAT number" value={company ? (company.vat_number || "Not set") : "—"} mono/>
-              <Field label="CSD number" value={company ? (company.csd_number || "Not set") : "—"} mono/>
-              <Field label="Contact email" value={company ? (company.contact_email || "Not set") : "—"} wide/>
-              <Field label="Contact phone" value={company ? (company.contact_phone || "Not set") : "—"} mono/>
+              <EditableField label="Legal name" value={form.name || ""} onChange={v => setField("name", v)} placeholder="Company (Pty) Ltd"/>
+              <EditableField label="Registration number" value={form.registration_number || ""} onChange={v => setField("registration_number", v)} placeholder="2019/123456/07" mono/>
+              <EditableField label="VAT number" value={form.vat_number || ""} onChange={v => setField("vat_number", v)} placeholder="4xxxxxxxxx" mono/>
+              <EditableField label="CSD number" value={form.csd_number || ""} onChange={v => setField("csd_number", v)} placeholder="MAAAxxxxxxx" mono/>
+              <EditableField label="Primary industry" value={form.industry || ""} onChange={v => setField("industry", v)} placeholder="ICT / Construction / Security"/>
+              <EditableField label="Province" value={form.province || ""} onChange={v => setField("province", v)} placeholder="Gauteng"/>
+              <EditableField label="Contact email" value={form.contact_email || ""} onChange={v => setField("contact_email", v)} placeholder="bids@company.co.za"/>
+              <EditableField label="Contact phone" value={form.contact_phone || ""} onChange={v => setField("contact_phone", v)} placeholder="+27 11 000 0000" mono/>
             </div>
           </div>
 
-          {/* Industry */}
+          {/* Transformation & capacity */}
           <div className="card card-pad">
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Industry & services</div>
-            <div className="grid g-2" style={{ marginBottom: 16 }}>
-              <Field label="Primary industry" value="Information & Communication Technology"/>
-              <Field label="SIC code" value="62020" mono/>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, marginBottom: 8 }}>Services offered</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {["Managed SOC","Network security","Endpoint protection","Penetration testing","Compliance consulting","Incident response","Cloud security","Identity & access","Threat intelligence"].map(s => (
-                <span key={s} className="chip" style={{ fontSize: 11.5 }}>{s} <Icon.x size={10} style={{ color: "var(--text-3)" }}/></span>
-              ))}
-              <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }}><Icon.plus size={11}/> Add service</button>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>B-BBEE &amp; capacity</div>
+            <div className="grid g-2">
+              <div>
+                <div className="label">B-BBEE level (1–8)</div>
+                <select className="input" value={form.bbbee_level || ""} onChange={e => setField("bbbee_level", e.target.value)}>
+                  <option value="">Not set</option>
+                  {[1,2,3,4,5,6,7,8].map(l => <option key={l} value={l}>Level {l}</option>)}
+                </select>
+              </div>
+              <EditableField label="CIDB grading" value={form.cidb_grading || ""} onChange={v => setField("cidb_grading", v)} placeholder="e.g. 7GB (or N/A)"/>
+              <EditableField label="Years in operation" value={form.years_experience || ""} onChange={v => setField("years_experience", v)} placeholder="e.g. 7"/>
+              <EditableField label="Employees" value={form.employee_count || ""} onChange={v => setField("employee_count", v)} placeholder="e.g. 24"/>
+              <EditableField label="Annual turnover" value={form.annual_turnover || ""} onChange={v => setField("annual_turnover", v)} placeholder="e.g. R 12M" wide/>
             </div>
           </div>
 
-          {/* B-BBEE */}
+          {/* Capability statement */}
           <div className="card card-pad">
-            <div className="between" style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>B-BBEE &amp; transformation</div>
-              <span className="chip emerald">Level 2 · 125% recognition</span>
-            </div>
-            <div className="grid g-4">
-              {[
-                { l: "Black ownership", v: "62%" },
-                { l: "Black female ownership", v: "31%" },
-                { l: "Youth ownership", v: "18%" },
-                { l: "EME / QSE", v: "QSE" },
-              ].map((s, i) => (
-                <div key={i} style={{ padding: 14, background: "var(--surface-2)", borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>{s.l}</div>
-                  <div style={{ fontSize: 22, fontWeight: 600, marginTop: 6, letterSpacing: "-0.02em" }} className="tnum">{s.v}</div>
-                </div>
-              ))}
-            </div>
-            <div className="divider" style={{ margin: "18px 0" }}/>
-            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, marginBottom: 10 }}>Verification certificates</div>
-            <div className="col gap-2">
-              <CertRow t="B-BBEE Verification Affidavit (EME · 2025)" e="Expires 8 Jun 2026" status="expiring"/>
-              <CertRow t="ISO 27001:2022" e="Expires 12 Nov 2027" status="valid"/>
-              <CertRow t="ISO 9001:2015" e="Expires 4 Mar 2028" status="valid"/>
-              <CertRow t="CIDB Grading" e="N/A — IT services" status="valid"/>
-            </div>
-          </div>
-
-          {/* Geographic */}
-          <div className="card card-pad">
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Geographic coverage</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {["Gauteng","Western Cape","KwaZulu-Natal","Eastern Cape","Free State","Limpopo","Mpumalanga","North West","Northern Cape"].map(p => {
-                const active = ["Gauteng","Western Cape","KwaZulu-Natal"].includes(p);
-                return (
-                  <div key={p} style={{
-                    padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 7,
-                    background: active ? "var(--emerald-soft)" : "var(--surface)",
-                    color: active ? "var(--emerald)" : "var(--text-2)",
-                    fontSize: 12.5, display: "flex", alignItems: "center", gap: 8,
-                  }}>
-                    {active ? <Icon.check size={12}/> : <Icon.x size={11} style={{ opacity: .4 }}/>}
-                    {p}
-                  </div>
-                );
-              })}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Capability statement</div>
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 12 }}>Used by AI to draft proposals and match you to tenders.</div>
+            <textarea
+              className="input"
+              value={form.capability_statement || ""}
+              onChange={e => setField("capability_statement", e.target.value)}
+              placeholder="Describe your company's core services, experience and differentiators…"
+              rows={5}
+              style={{ resize: "vertical", lineHeight: 1.6 }}
+            />
           </div>
         </div>
       </div>
@@ -179,16 +180,17 @@ function Field({ label, value, mono, wide }) {
   );
 }
 
-function CertRow({ t, e, status }) {
+function EditableField({ label, value, onChange, placeholder, mono, wide }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 7, gap: 12, background: "var(--surface)" }}>
-      <Icon.shield size={14} style={{ color: status === "valid" ? "var(--emerald)" : "var(--amber)" }}/>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 500 }}>{t}</div>
-        <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{e}</div>
-      </div>
-      <StatusChip status={status}/>
-      <button className="btn btn-sm btn-ghost btn-icon"><Icon.more size={12}/></button>
+    <div style={wide ? { gridColumn: "1 / -1" } : {}}>
+      <div className="label">{label}</div>
+      <input
+        className="input"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ fontFamily: mono ? "var(--font-mono)" : "inherit" }}
+      />
     </div>
   );
 }

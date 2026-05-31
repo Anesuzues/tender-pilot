@@ -171,23 +171,80 @@
     /* -- Company -- */
     async getCompany() { return this._fetch("/companies/me"); }
 
+    async updateCompany(payload) {
+      return this._fetch("/companies/me", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    }
+
+    async createCompany(payload) {
+      return this._fetch("/companies", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+
     /* -- Proposals -- */
     async getProposals() {
       const page = await this._fetch("/proposals");
       return page.items || page;
     }
 
-    async createProposal(tender_id) {
+    async getProposal(draftId) { return this._fetch("/proposals/" + draftId); }
+
+    async createProposal(tender_id, title) {
       return this._fetch("/proposals", {
         method: "POST",
-        body: JSON.stringify({ tender_id }),
+        body: JSON.stringify({ tender_id, title }),
       });
+    }
+
+    async generateSection(draftId, kind) {
+      return this._fetch("/proposals/" + draftId + "/sections/generate", {
+        method: "POST",
+        body: JSON.stringify({ kind }),
+      });
+    }
+
+    async updateSection(draftId, sectionId, payload) {
+      return this._fetch("/proposals/" + draftId + "/sections/" + sectionId, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    }
+
+    async exportProposal(draftId, format) {
+      // Returns a Blob for download
+      const headers = {};
+      if (this._token) headers["Authorization"] = "Bearer " + this._token;
+      headers["Content-Type"] = "application/json";
+      const res = await fetch(BASE + "/proposals/" + draftId + "/export", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ format: format || "markdown" }),
+      });
+      if (!res.ok) throw new Error("Export failed (" + res.status + ")");
+      return res.blob();
     }
 
     /* -- Notifications -- */
     async getNotifications() {
       const page = await this._fetch("/notifications");
       return page.items || page;
+    }
+
+    async markNotificationRead(id) {
+      return this._fetch("/notifications/" + id + "/read", { method: "POST" });
+    }
+
+    async markAllNotificationsRead() {
+      return this._fetch("/notifications/read-all", { method: "POST" });
+    }
+
+    /* -- Document delete -- */
+    async deleteDocument(docId) {
+      return this._fetch("/documents/" + docId, { method: "DELETE" });
     }
   }
 

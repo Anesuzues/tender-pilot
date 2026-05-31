@@ -22,6 +22,30 @@ from app.services.storage import compute_hash, get_storage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+# Keyword → compliance category. Used to auto-classify uploads whose category
+# is unspecified or generic, so the vault organises documents without manual tagging.
+_CATEGORY_KEYWORDS = {
+    "Tax": ["tax", "sars", "tcc", "pin", "clearance", "vat"],
+    "B-BBEE": ["bbbee", "b-bbee", "bee", "affidavit", "transformation", "eme", "qse"],
+    "CIPC": ["cipc", "cor14", "cor 14", "disclosure", "incorporation", "directors"],
+    "CSD": ["csd", "central supplier", "maaa"],
+    "Insurance": ["insurance", "liability", "indemnity", "coid", "policy", "cover"],
+    "Bank Letter": ["bank", "fnb", "absa", "nedbank", "standard bank", "capitec", "confirmation"],
+    "SBD Forms": ["sbd", "sbd4", "sbd 4", "sbd6", "sbd8", "sbd9", "declaration"],
+    "Capability": ["capability", "company profile", "cv", "reference", "portfolio", "experience"],
+}
+
+
+def _auto_classify(filename: str | None, given: str | None) -> str:
+    """Infer a compliance category from the filename when none is given."""
+    if given and given not in ("", "Other", "other", "auto"):
+        return given
+    name = (filename or "").lower()
+    for category, keywords in _CATEGORY_KEYWORDS.items():
+        if any(kw in name for kw in keywords):
+            return category
+    return given or "Other"
+
 
 def _to_out(doc: ComplianceDocument) -> DocumentOut:
     out = DocumentOut.model_validate(doc)
@@ -85,10 +109,14 @@ async def upload_document(
     key = f"company/{company_id}/compliance/{file_hash}-{file.filename}"
     get_storage().save(key, data, file.content_type)
 
+    # Auto-classify the document from its filename when no explicit category given.
+    resolved_category = _auto_classify(file.filename, category)
+    auto_classified = resolved_category != (category or "")
+
     doc = ComplianceDocument(
         company_id=company_id,
-        category=category,
-        name=name or file.filename or category,
+        category=resolved_category,
+        name=name or file.filename or resolved_category,
         expires_on=expires_on,
         reference=reference,
         uploaded_on=date.today(),
@@ -96,7 +124,7 @@ async def upload_document(
         storage_key=key,
         file_hash=file_hash,
         status=DOC_VALID,
-        ai_verified=False,
+        ai_verified=auto_classified,
     )
     doc.status = compliance.derive_status(doc)
     db.add(doc)

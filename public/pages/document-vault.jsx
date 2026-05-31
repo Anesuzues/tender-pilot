@@ -45,7 +45,9 @@ function DocumentVault({ onNav }) {
         subtitle="Encrypted vault of every compliance document. Versioned, expiry-tracked, AI-validated."
         actions={
           <>
-            <button className="btn btn-sm"><Icon.download size={13}/> Export bundle</button>
+            <button className="btn btn-sm" onClick={() => exportVaultCsv(allDocs)} disabled={allDocs.length === 0}>
+              <Icon.download size={13}/> Export bundle
+            </button>
             <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={uploading}>
               <Icon.plus size={13}/> {uploading ? "Uploading…" : "Upload document"}
             </button>
@@ -178,6 +180,22 @@ function DocCard({ d }) {
       </div>
     </div>
   );
+}
+
+function exportVaultCsv(docs) {
+  if (!docs || docs.length === 0) return;
+  const rows = [["Name", "Category", "Status", "Expires", "Uploaded", "Size", "AI verified"]];
+  docs.forEach(d => rows.push([
+    d.name || "", d.category || "", d.status || "",
+    d.expires || "", d.uploaded || "", d.size || "", d.aiVerified ? "yes" : "no",
+  ]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "compliance-vault.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 Object.assign(window, { DocumentVault });

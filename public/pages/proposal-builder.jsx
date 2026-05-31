@@ -1,182 +1,216 @@
 /* ---------- Proposal Builder ---------- */
-function ProposalBuilder({ onNav }) {
-  const [active, setActive] = React.useState("ps2"); // Executive Summary
+function ProposalBuilder({ onNav, activeTenderId }) {
+  const isLoggedIn = window.API && API.isLoggedIn();
+  const [draft, setDraft] = React.useState(null);
+  const [activeId, setActiveId] = React.useState(null);
   const [generating, setGenerating] = React.useState(false);
-  const [text, setText] = React.useState(EXEC_SUMMARY);
+  const [exporting, setExporting] = React.useState(false);
+  const [loading, setLoading] = React.useState(isLoggedIn && !!activeTenderId);
+  const [error, setError] = React.useState(null);
+  const [noTender, setNoTender] = React.useState(false);
 
-  const handleRegenerate = () => {
-    setGenerating(true);
-    setText("");
-    let i = 0;
-    const tick = () => {
-      if (i < EXEC_SUMMARY.length) {
-        setText(EXEC_SUMMARY.slice(0, i));
-        i += Math.max(4, Math.floor(EXEC_SUMMARY.length / 220));
-        setTimeout(tick, 14);
-      } else {
-        setText(EXEC_SUMMARY);
-        setGenerating(false);
+  // Create or load a proposal draft for the active tender
+  React.useEffect(() => {
+    if (!isLoggedIn) return;
+    if (!activeTenderId) { setNoTender(true); setLoading(false); return; }
+    setLoading(true);
+    const init = async () => {
+      try {
+        // Reuse an existing draft for this tender if present
+        const existing = await API.getProposals().catch(() => []);
+        let d = (existing || []).find(p => p.tender_id === activeTenderId);
+        if (!d) d = await API.createProposal(activeTenderId);
+        else d = await API.getProposal(d.id);
+        setDraft(d);
+        if (d.sections && d.sections.length) setActiveId(d.sections[0].id);
+      } catch (e) {
+        setError(e.message || "Could not load proposal.");
+      } finally {
+        setLoading(false);
       }
     };
-    setTimeout(tick, 200);
+    init();
+  }, [activeTenderId, isLoggedIn]);
+
+  const activeSection = draft && draft.sections ? (draft.sections.find(s => s.id === activeId) || draft.sections[0]) : null;
+
+  const generate = async (section) => {
+    if (!draft || !section) return;
+    setGenerating(true); setError(null);
+    try {
+      const updated = await API.generateSection(draft.id, section.kind);
+      setDraft(d => ({ ...d, sections: d.sections.map(s => s.id === updated.id ? updated : s) }));
+      setActiveId(updated.id);
+    } catch (e) {
+      setError(e.message || "Generation failed. Try again.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  const activeSection = PROPOSAL_SECTIONS.find(s => s.id === active) || PROPOSAL_SECTIONS[0];
+  const editContent = (val) => {
+    setDraft(d => ({ ...d, sections: d.sections.map(s => s.id === activeId ? { ...s, content: val } : s) }));
+  };
 
-  return (
-    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "260px 1fr 300px", flex: 1, minHeight: 0 }} className="pb-grid">
-      {/* Coming Soon overlay */}
-      <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "rgba(var(--bg-rgb, 250,250,250),.82)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center", maxWidth: 400, padding: 32 }}>
+  const saveEdit = async () => {
+    if (!draft || !activeSection) return;
+    try {
+      await API.updateSection(draft.id, activeSection.id, { content: activeSection.content });
+    } catch {}
+  };
+
+  const doExport = async (format) => {
+    if (!draft) return;
+    setExporting(true);
+    try {
+      const blob = await API.exportProposal(draft.id, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `proposal-${draft.id.slice(0, 8)}.${format === "markdown" ? "md" : format === "html" ? "html" : "txt"}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // --- Not logged in: demo preview ---
+  if (!isLoggedIn) {
+    return <ProposalBuilderDemo onNav={onNav}/>;
+  }
+
+  // --- No tender selected ---
+  if (noTender) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div style={{ textAlign: "center", maxWidth: 420, padding: 32 }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
             <Icon.edit size={24}/>
           </div>
-          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.018em", marginBottom: 10 }}>Proposal Builder</div>
-          <div style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 24 }}>
-            AI-powered proposal drafting is coming soon. Upload a tender and analyse it first — the builder will pre-fill sections from your company profile and tender requirements.
+          <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 10 }}>Start a proposal</div>
+          <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 22 }}>
+            Open a tender from your workspace and click <b>Start proposal</b> — the builder will create AI-drafted sections from that tender and your company profile.
           </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-            <span className="chip blue"><Icon.sparkles size={10}/>Coming soon</span>
-            <span className="chip emerald">AI-powered</span>
-          </div>
+          <button className="btn btn-primary" onClick={() => onNav("tenders")}><Icon.arrow size={13}/> Go to my tenders</button>
         </div>
       </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div style={{ textAlign: "center", color: "var(--text-3)" }}>
+          <span className="spin" style={{ display: "inline-block", width: 22, height: 22, borderRadius: 999, border: "2.5px solid var(--border-strong)", borderTopColor: "var(--emerald)", marginBottom: 12 }}/>
+          <div style={{ fontSize: 13 }}>Preparing your proposal…</div>
+        </div>
+      </div>
+    );
+  }
+
+  const sections = (draft && draft.sections) || [];
+  const completed = sections.filter(s => s.content).length;
+  const pct = sections.length ? Math.round((completed / sections.length) * 100) : 0;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", flex: 1, minHeight: 0 }} className="pb-grid">
       {/* Sections sidebar */}
       <aside style={{ borderRight: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto", display: "flex", flexDirection: "column" }} className="pb-sidebar">
         <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ fontSize: 11.5, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Proposal</div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>SARS Cybersecurity Bid</div>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4 }}>RFB 2025/IT/0142</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{draft ? draft.title : "—"}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-            <Ring value={68} size={36} stroke={4}/>
-            <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>68% complete · 5 / 8 sections</div>
+            <Ring value={pct} size={36} stroke={4}/>
+            <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>{pct}% complete · {completed}/{sections.length} sections</div>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-          {PROPOSAL_SECTIONS.map((s, i) => (
+          {sections.map((s, i) => (
             <div key={s.id}
-                 className={cx("nav-item", active === s.id && "active")}
+                 className={cx("nav-item", activeId === s.id && "active")}
                  style={{ fontSize: 12.5, margin: 0, padding: "9px 10px", borderRadius: 7 }}
-                 onClick={() => setActive(s.id)}>
+                 onClick={() => setActiveId(s.id)}>
               <span className="mono" style={{ fontSize: 10, color: "var(--text-3)", width: 18 }}>{String(i+1).padStart(2,"0")}</span>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
-              <StatusDot status={s.status}/>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: s.content ? "var(--emerald)" : "var(--text-3)" }}/>
             </div>
           ))}
         </div>
-        <div style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
-          <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }}><Icon.download size={12}/> Export DOCX / PDF</button>
+        <div style={{ padding: 12, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} disabled={exporting || !completed} onClick={() => doExport("markdown")}>
+            <Icon.download size={12}/> {exporting ? "Exporting…" : "Export (Markdown)"}
+          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }} disabled={exporting || !completed} onClick={() => doExport("html")}>HTML</button>
+            <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }} disabled={exporting || !completed} onClick={() => doExport("text")}>Text</button>
+          </div>
         </div>
       </aside>
 
       {/* Editor */}
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: "var(--bg)" }}>
-        {/* Toolbar */}
         <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, background: "var(--bg-elev)" }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{activeSection.title}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{activeSection ? activeSection.title : "—"}</div>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-              <span className="mono">{text.split(/\s+/).filter(Boolean).length} words</span> · last edit {activeSection.lastEdit} · <AvatarGroup names={["Lerato M","Sipho N","Thandi K"]} max={3}/>
+              <span className="mono">{activeSection && activeSection.content ? activeSection.content.split(/\s+/).filter(Boolean).length : 0} words</span>
+              {activeSection && activeSection.content ? " · saved draft" : " · not yet generated"}
             </div>
           </div>
-          <button className="btn btn-sm btn-ghost"><Icon.refresh size={12}/> Versions</button>
-          <button className="btn btn-sm"><Icon.copy size={12}/></button>
-          <button className="btn btn-sm btn-primary" onClick={handleRegenerate} disabled={generating}>
+          <button className="btn btn-sm btn-primary" onClick={() => generate(activeSection)} disabled={generating || !activeSection}>
             {generating ? <><span className="spin" style={{ display: "inline-block", width: 12, height: 12, borderRadius: 999, border: "2px solid white", borderTopColor: "transparent" }}/> Generating…</> :
-              <><Icon.sparkles size={12}/> Regenerate</>}
+              <><Icon.sparkles size={12}/> {activeSection && activeSection.content ? "Regenerate" : "Generate with AI"}</>}
           </button>
         </div>
 
-        {/* Document */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 80px" }}>
+        {error && (
+          <div style={{ margin: "12px 24px 0", padding: "10px 14px", background: "rgba(239,68,68,.08)", border: "1px solid var(--red)", borderRadius: 8, fontSize: 12.5, color: "var(--red)" }}>{error}</div>
+        )}
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
           <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            <div className="card" style={{ padding: "48px 56px", minHeight: 600, position: "relative" }}>
-              {generating && (
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
-                  <AIBar/>
+            <div className="card" style={{ padding: "40px 48px", minHeight: 500 }}>
+              <div style={{ fontSize: 10.5, color: "var(--text-3)", letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600, marginBottom: 8 }}>
+                {activeSection ? activeSection.title : ""}
+              </div>
+              {activeSection && activeSection.content ? (
+                <textarea
+                  value={activeSection.content}
+                  onChange={e => editContent(e.target.value)}
+                  onBlur={saveEdit}
+                  style={{ width: "100%", minHeight: 420, border: 0, outline: "none", background: "transparent", fontSize: 14, lineHeight: 1.75, color: "var(--text)", resize: "vertical", fontFamily: "inherit" }}
+                />
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 360, textAlign: "center", color: "var(--text-3)" }}>
+                  <Icon.sparkles size={26} style={{ color: "var(--emerald)", opacity: .6, marginBottom: 14 }}/>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-2)", marginBottom: 6 }}>This section is empty</div>
+                  <div style={{ fontSize: 12.5, maxWidth: 340, lineHeight: 1.55, marginBottom: 18 }}>
+                    Click <b>Generate with AI</b> to draft this section using the tender requirements and your company profile.
+                  </div>
+                  <button className="btn btn-primary btn-sm" onClick={() => generate(activeSection)} disabled={generating}>
+                    <Icon.sparkles size={12}/> Generate with AI
+                  </button>
                 </div>
               )}
-              <div style={{ fontSize: 10.5, color: "var(--text-3)", letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 600, marginBottom: 8 }}>
-                Section 02 · Executive Summary
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 20 }}>
-                Executive Summary
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.75, color: "var(--text)", whiteSpace: "pre-wrap", textWrap: "pretty", minHeight: 400 }}>
-                {text}
-                {generating && <span className="pulse-dot" style={{ display: "inline-block", width: 8, height: 18, background: "var(--emerald)", marginLeft: 2, verticalAlign: "text-bottom" }}/>}
-              </div>
             </div>
-
-            {/* Action buttons under doc */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, gap: 8 }}>
-              <div className="row gap-2">
-                <button className="btn btn-sm btn-ghost"><Icon.sparkles size={11}/> Make more concise</button>
-                <button className="btn btn-sm btn-ghost"><Icon.sparkles size={11}/> Add a stat</button>
-                <button className="btn btn-sm btn-ghost"><Icon.sparkles size={11}/> Match company tone</button>
+            {activeSection && activeSection.content && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+                <button className="btn btn-sm" onClick={() => {
+                  const idx = sections.findIndex(s => s.id === activeId);
+                  if (sections[idx + 1]) setActiveId(sections[idx + 1].id);
+                }}>
+                  Next: {sections[sections.findIndex(s => s.id === activeId) + 1]?.title || "—"} <Icon.arrow size={12}/>
+                </button>
               </div>
-              <button className="btn btn-sm" onClick={() => setActive(PROPOSAL_SECTIONS[PROPOSAL_SECTIONS.findIndex(s => s.id === active) + 1]?.id || active)}>
-                Next: {PROPOSAL_SECTIONS[PROPOSAL_SECTIONS.findIndex(s => s.id === active) + 1]?.title || "—"} <Icon.arrow size={12}/>
-              </button>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Right panel: AI helper */}
-      <aside style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto" }} className="pb-helper">
-        <div style={{ padding: 14 }}>
-          <div className="ai-glow" style={{ padding: 14, borderRadius: 10, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Icon.sparkles size={13} style={{ color: "var(--emerald)" }}/>
-              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Writing assistant</div>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55 }}>
-              Drafting your <b>Executive Summary</b> using your company profile, the 3 most-similar past wins, and section 1 of the RFB.
-            </div>
-          </div>
-
-          <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, marginBottom: 10 }}>Quick actions</div>
-          <div className="col gap-2">
-            {[
-              { icon: "doc", t: "Insert capability statement" },
-              { icon: "chart", t: "Insert win-rate stat" },
-              { icon: "shield", t: "Insert B-BBEE Level 2 statement" },
-              { icon: "edit", t: "Tighten paragraph 2" },
-            ].map((a, i) => (
-              <button key={i} className="card card-pad-sm" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", textAlign: "left", cursor: "pointer", background: "var(--surface)" }}>
-                <div style={{ width: 22, height: 22, borderRadius: 5, background: "var(--surface-2)", color: "var(--text-2)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                  {Icon[a.icon] && Icon[a.icon]({ size: 12 })}
-                </div>
-                <div style={{ fontSize: 12, flex: 1 }}>{a.t}</div>
-                <Icon.arrow size={11} style={{ color: "var(--text-3)" }}/>
-              </button>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, margin: "22px 0 10px" }}>Version history</div>
-          <div className="col gap-2">
-            {[
-              { v: "v4 (current)", by: "AI", time: "just now", active: true },
-              { v: "v3", by: "Lerato M", time: "23 min ago" },
-              { v: "v2", by: "AI", time: "1 h ago" },
-              { v: "v1", by: "AI", time: "Yesterday" },
-            ].map((h, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", padding: "8px 10px", borderRadius: 7, background: h.active ? "var(--surface)" : "transparent", border: h.active ? "1px solid var(--border)" : "1px solid transparent", fontSize: 12, gap: 10 }}>
-                <span className="mono" style={{ fontSize: 11, fontWeight: 600 }}>{h.v}</span>
-                <span style={{ flex: 1, color: "var(--text-2)" }}>by {h.by}</span>
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{h.time}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </aside>
-
       <style>{`
-        @media (max-width: 1180px){
-          .pb-grid{ grid-template-columns:240px 1fr!important; }
-          .pb-helper{ display:none!important; }
-        }
         @media (max-width: 800px){
           .pb-grid{ grid-template-columns:1fr!important; }
           .pb-sidebar{ display:none!important; }
@@ -186,23 +220,22 @@ function ProposalBuilder({ onNav }) {
   );
 }
 
-function StatusDot({ status }) {
-  const map = {
-    approved: "var(--emerald)",
-    "ai-draft": "var(--violet)",
-    "in-review": "var(--blue)",
-    draft: "var(--text-3)",
-    auto: "var(--blue)",
-  };
-  return <span style={{ width: 7, height: 7, borderRadius: 999, background: map[status] || "var(--text-3)" }}/>;
+/* Demo preview shown when not logged in */
+function ProposalBuilderDemo({ onNav }) {
+  return (
+    <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+      <div style={{ textAlign: "center", maxWidth: 420, padding: 32 }}>
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
+          <Icon.edit size={24}/>
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 10 }}>AI Proposal Builder</div>
+        <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 22 }}>
+          Sign in, upload a tender, and TenderPilot drafts a full proposal — cover letter, executive summary, methodology, compliance matrix and more — grounded in the tender and your company profile.
+        </div>
+        <button className="btn btn-primary" onClick={() => onNav("auth")}>Sign in to start</button>
+      </div>
+    </div>
+  );
 }
 
-const EXEC_SUMMARY = `Sandile Cybersecurity (Pty) Ltd is pleased to respond to RFB 2025/IT/0142 for the supply, delivery and ongoing maintenance of cybersecurity infrastructure at the South African Revenue Service. We are a Level 2 B-BBEE contributor with seven years of focused experience securing public-sector revenue and financial-services environments — including SARS (2021–2024), SARB, and three provincial treasuries.
-
-Our solution combines next-generation network detection, EDR, and a 24×7 Security Operations Centre located in Centurion, Gauteng, with a hot-standby facility in Cape Town. Both sites are ISO 27001:2022 certified and operate under a SOC 2 Type II audit programme. Engineers on the SARS account will hold valid OEM certifications across Cisco, Palo Alto Networks, and CrowdStrike Falcon (training underway for two staff to satisfy section 3.8 by 30 June 2026).
-
-We have read the evaluation criteria carefully. We meet seven of the ten mandatory requirements as of submission, with the remaining three on a documented remediation plan that closes inside the 30-day evaluation window. Our pricing model holds the per-endpoint fee constant across years 1–5 and includes an 8% transformation discount aligned to your supplier development objectives.
-
-We thank SARS for the opportunity to submit this bid. We commit to the response timelines specified in section 5, and to attending the mandatory briefing on 28 May 2026.`;
-
-Object.assign(window, { ProposalBuilder });
+Object.assign(window, { ProposalBuilder, ProposalBuilderDemo });
