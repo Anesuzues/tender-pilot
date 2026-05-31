@@ -13,8 +13,15 @@ function App() {
     if (window.API && API.isLoggedIn()) {
       API.me()
         .then(u => { setUser(u); setRoute("dashboard"); })
-        .catch(() => { API.logout(); });
+        .catch(() => { API.logout(); setRoute("auth"); });
     }
+  }, []);
+
+  // Global 401 handler — any expired token anywhere in the app
+  useEffectApp(() => {
+    const onExpired = () => { setUser(null); setRoute("auth"); };
+    window.addEventListener("tp:session-expired", onExpired);
+    return () => window.removeEventListener("tp:session-expired", onExpired);
   }, []);
 
   useEffectApp(() => {

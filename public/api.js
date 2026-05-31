@@ -76,6 +76,7 @@
 
       if (res.status === 401) {
         this.setToken(null);
+        window.dispatchEvent(new Event("tp:session-expired"));
         throw new Error("Session expired — please sign in again.");
       }
 
