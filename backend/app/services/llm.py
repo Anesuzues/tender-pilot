@@ -69,6 +69,27 @@ async def _openai_complete(system: str, messages: list[LLMMessage]) -> str:  # p
     return data["choices"][0]["message"]["content"]
 
 
+async def _groq_complete(system: str, messages: list[LLMMessage]) -> str:  # pragma: no cover
+    import httpx
+
+    model = settings.llm_model if settings.llm_model else "llama-3.3-70b-versatile"
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}]
+        + [{"role": m.role, "content": m.content} for m in messages],
+        "max_tokens": 1500,
+        "temperature": 0.3,
+    }
+    headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers
+        )
+        r.raise_for_status()
+        data = r.json()
+    return data["choices"][0]["message"]["content"]
+
+
 async def _gemini_complete(system: str, messages: list[LLMMessage]) -> str:  # pragma: no cover
     import httpx
 
@@ -140,6 +161,8 @@ async def complete(system: str, messages: list[LLMMessage]) -> str:
             return await _anthropic_complete(system, messages)
         if provider == "openai" and settings.openai_api_key:
             return await _openai_complete(system, messages)
+        if provider == "groq" and settings.groq_api_key:
+            return await _groq_complete(system, messages)
         if provider == "gemini" and settings.gemini_api_key:
             return await _gemini_complete(system, messages)
     except Exception:
