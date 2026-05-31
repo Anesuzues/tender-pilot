@@ -24,7 +24,23 @@ function ProposalBuilder({ onNav }) {
   const activeSection = PROPOSAL_SECTIONS.find(s => s.id === active) || PROPOSAL_SECTIONS[0];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 300px", flex: 1, minHeight: 0 }} className="pb-grid">
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "260px 1fr 300px", flex: 1, minHeight: 0 }} className="pb-grid">
+      {/* Coming Soon overlay */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "rgba(var(--bg-rgb, 250,250,250),.82)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", maxWidth: 400, padding: 32 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
+            <Icon.edit size={24}/>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.018em", marginBottom: 10 }}>Proposal Builder</div>
+          <div style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 24 }}>
+            AI-powered proposal drafting is coming soon. Upload a tender and analyse it first — the builder will pre-fill sections from your company profile and tender requirements.
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <span className="chip blue"><Icon.sparkles size={10}/>Coming soon</span>
+            <span className="chip emerald">AI-powered</span>
+          </div>
+        </div>
+      </div>
       {/* Sections sidebar */}
       <aside style={{ borderRight: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto", display: "flex", flexDirection: "column" }} className="pb-sidebar">
         <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--border)" }}>

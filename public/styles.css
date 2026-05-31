@@ -376,3 +376,42 @@ html[data-theme="dark"] .ai-glow {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
 a { color: inherit; text-decoration: none; }
+
+/* ---------- Mobile / Responsive overrides ---------- */
+@media (max-width: 640px) {
+  /* Grids collapse to 1 col on small mobile */
+  .g-2, .g-3, .g-4 { grid-template-columns: 1fr !important; }
+
+  /* Tables: allow horizontal scroll, don't shrink text unreadably */
+  .table { font-size: 12px; }
+  .scrollx { -webkit-overflow-scrolling: touch; }
+
+  /* Page padding tighter on very small screens */
+  .page { padding: 16px 12px 60px; }
+
+  /* KPI cards: 2 cols on mobile instead of 4 */
+  .grid.g-4 { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Hide kbd shortcuts in topbar on mobile */
+  .topbar .kbd { display: none; }
+
+  /* Full-bleed layouts (chat/analysis/builder) need min-height */
+  .chat-grid, .ta-grid, .pb-grid { min-height: calc(100vh - 56px); }
+}
+
+@media (max-width: 480px) {
+  /* Stack KPIs to single column on very small screens */
+  .grid.g-4 { grid-template-columns: 1fr !important; }
+
+  /* Hide non-essential table columns */
+  .table th:nth-child(5),
+  .table td:nth-child(5),
+  .table th:nth-child(6),
+  .table td:nth-child(6) { display: none; }
+}
+
+/* Topbar compact on mobile */
+@media (max-width: 900px) {
+  .topbar { padding: 0 12px; gap: 6px; }
+  .topbar .vdivider { display: none; }
+}

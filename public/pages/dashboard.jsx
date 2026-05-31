@@ -173,7 +173,25 @@ function Dashboard({ onNav, user }) {
           <div className="card card-pad">
             <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 12 }}>Recent activity</div>
             <div className="col gap-3">
-              {ACTIVITY.slice(0,5).map((a, i) => (
+              {isLoggedIn ? (
+                tenders.length === 0 && loaded ? (
+                  <div style={{ fontSize: 12.5, color: "var(--text-3)", textAlign: "center", padding: "16px 0" }}>
+                    No activity yet — upload a tender to get started.
+                  </div>
+                ) : tenders.slice(0, 5).map((t, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center" }}>
+                      <Icon.sparkles size={11}/>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>
+                        <b style={{ fontWeight: 500 }}>AI</b> <span style={{ color: "var(--text-2)" }}>analysed <b style={{ fontWeight: 500 }}>{t.title}</b></span>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 2 }}>{t.deadline || "No deadline set"}</div>
+                    </div>
+                  </div>
+                ))
+              ) : ACTIVITY.slice(0,5).map((a, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                   <div style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, background: a.who === "AI" ? "var(--emerald-soft)" : "var(--surface-2)", color: a.who === "AI" ? "var(--emerald)" : "var(--text-2)", display: "grid", placeItems: "center" }}>
                     {a.who === "AI" ? <Icon.sparkles size={11}/> : <Icon.user size={11}/>}

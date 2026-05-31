@@ -61,6 +61,10 @@ function CompliancePage({ onNav }) {
 
   return (
     <div className="page">
+      <div style={{ marginBottom: 16, padding: "10px 16px", background: "var(--amber-soft)", border: "1px solid var(--amber)", borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
+        <Icon.alert size={14} style={{ color: "var(--amber)", flexShrink: 0 }}/>
+        <span><b>Beta feature</b> — Compliance data below is sample content showing what this page will look like once connected to your Document Vault. Upload your compliance documents to get your real score.</span>
+      </div>
       <PageHeader
         eyebrow="Compliance"
         title="Compliance Checklist"

@@ -12,6 +12,11 @@ function Admin() {
         </>}
       />
 
+      <div style={{ marginBottom: 16, padding: "10px 16px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: "var(--text-3)" }}>
+        <Icon.info size={14} style={{ flexShrink: 0 }}/>
+        <span>Admin metrics below are demo data. Real platform analytics will populate once connected to a production analytics pipeline.</span>
+      </div>
+
       {/* Platform metrics */}
       <div className="grid g-4">
         <KPI label="Active users" value="287" delta="+24" deltaDir="up" spark={[120,135,148,162,180,200,218,240,265,287]}/>

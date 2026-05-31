@@ -1,5 +1,12 @@
 /* ---------- Company Profile ---------- */
 function CompanyProfile() {
+  const [company, setCompany] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!window.API || !API.isLoggedIn()) return;
+    API.getCompany().then(c => { if (c) setCompany(c); }).catch(() => {});
+  }, []);
+
   const completeness = 84;
   const sections = [
     { id: "info", t: "Company information", done: true },
@@ -64,10 +71,10 @@ function CompanyProfile() {
                 color: "white", display: "grid", placeItems: "center",
                 fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em",
                 flexShrink: 0,
-              }}>SC</div>
+              }}>{company ? company.name.slice(0,2).toUpperCase() : "?"}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.014em" }}>Sandile Cybersecurity (Pty) Ltd</div>
-                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>Centurion, Gauteng · Founded 2019 · 24 staff</div>
+                <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.014em" }}>{company ? company.name : "Your Company"}</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>{company ? (company.province || "") : "Complete your profile below"}</div>
                 <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                   <span className="chip emerald"><span className="chip-dot"/>Active</span>
                   <span className="chip">CIPC verified</span>
@@ -77,14 +84,12 @@ function CompanyProfile() {
               <button className="btn btn-sm">Change logo</button>
             </div>
             <div className="grid g-2">
-              <Field label="Legal name" value="Sandile Cybersecurity (Pty) Ltd"/>
-              <Field label="Registration number" value="2019/487112/07" mono/>
-              <Field label="VAT number" value="4 8104 81729" mono/>
-              <Field label="CSD number" value="MAAA0451729" mono/>
-              <Field label="Trading address" value="Block C, Lakefield Office Park, Centurion 0157" wide/>
-              <Field label="Postal address" value="PO Box 11442, Centurion 0046" wide/>
-              <Field label="Email" value="bids@sandilecyber.co.za"/>
-              <Field label="Phone" value="+27 12 941 8200" mono/>
+              <Field label="Legal name" value={company ? company.name : "—"}/>
+              <Field label="Registration number" value={company ? (company.registration_number || "Not set") : "—"} mono/>
+              <Field label="VAT number" value={company ? (company.vat_number || "Not set") : "—"} mono/>
+              <Field label="CSD number" value={company ? (company.csd_number || "Not set") : "—"} mono/>
+              <Field label="Contact email" value={company ? (company.contact_email || "Not set") : "—"} wide/>
+              <Field label="Contact phone" value={company ? (company.contact_phone || "Not set") : "—"} mono/>
             </div>
           </div>
 

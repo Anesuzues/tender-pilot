@@ -7,6 +7,8 @@ function App() {
   const [cmdOpen, setCmdOpen] = useStateApp(false);
   const [user, setUser] = useStateApp(null);
   const [activeTenderId, setActiveTenderId] = useStateApp(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useStateApp(false);
+  const [cmdTenders, setCmdTenders] = useStateApp([]);
 
   // Restore session from stored token
   useEffectApp(() => {
@@ -16,6 +18,12 @@ function App() {
         .catch(() => { API.logout(); setRoute("auth"); });
     }
   }, []);
+
+  // Pre-fetch tenders for command palette when logged in
+  useEffectApp(() => {
+    if (!user || !window.API || !API.isLoggedIn()) return;
+    API.getTenders({ limit: 50 }).then(r => { if (r.items) setCmdTenders(r.items); }).catch(() => {});
+  }, [user]);
 
   // Global 401 handler — any expired token anywhere in the app
   useEffectApp(() => {
@@ -87,7 +95,14 @@ function App() {
   return (
     <>
       <div className="app">
-        <Sidebar activePage={route} onNav={navigate}/>
+        <Sidebar
+          activePage={route}
+          onNav={navigate}
+          user={user}
+          onLogout={handleLogout}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
+        />
         <div className="main">
           <Topbar
             pageTitle={route}
@@ -97,6 +112,7 @@ function App() {
             theme={theme}
             user={user}
             onLogout={handleLogout}
+            onMenu={() => setMobileSidebarOpen(o => !o)}
           />
           {fullBleed ? (
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -109,7 +125,7 @@ function App() {
           )}
         </div>
       </div>
-      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNav={navigate}/>
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNav={navigate} tenders={cmdTenders}/>
       <PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme} user={user} onLogout={handleLogout}/>
     </>
   );
