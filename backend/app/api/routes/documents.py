@@ -133,6 +133,23 @@ async def upload_document(
     return _to_out(doc)
 
 
+@router.get("/{doc_id}/file")
+async def download_document_file(doc_id: str, company_id: CompanyId, db: DbSession):
+    from fastapi.responses import Response
+    doc = await _get_owned(db, doc_id, company_id)
+    if not doc.storage_key:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No file on record")
+    try:
+        data = get_storage().read(doc.storage_key)
+    except Exception:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found in storage")
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc.name}"'},
+    )
+
+
 @router.patch("/{doc_id}", response_model=DocumentOut)
 async def update_document(
     doc_id: str, payload: DocumentUpdate, company_id: CompanyId, db: DbSession

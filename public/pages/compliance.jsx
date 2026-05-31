@@ -87,8 +87,13 @@ function CompliancePage({ onNav }) {
         subtitle="Live readiness assessment across statutory, tax, transformation, insurance and SBD requirements."
         actions={
           <>
-            <button className="btn btn-sm"><Icon.download size={13}/> Export checklist</button>
-            <button className="btn btn-sm btn-primary"><Icon.sparkles size={13}/> Fix all with AI</button>
+            <button className="btn btn-sm" onClick={() => {
+              const rows = [["Group","Item","Status","Severity","Note"]];
+              groups.forEach(g => g.items.forEach(it => rows.push([g.title, it.t, it.status, it.sev, it.note || ""])));
+              const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+              window.downloadBlob(new Blob([csv], { type: "text/csv" }), "compliance-checklist.csv");
+            }}><Icon.download size={13}/> Export checklist</button>
+            <button className="btn btn-sm btn-primary" onClick={() => onNav && onNav("auth")}><Icon.sparkles size={13}/> Fix all with AI</button>
           </>
         }
       />
@@ -148,7 +153,7 @@ function CompliancePage({ onNav }) {
                       <SeverityChip sev={it.sev}/>
                       <StatusChip status={it.status}/>
                       {it.status !== "pass" && (
-                        <button className="btn btn-sm">{it.status === "fail" ? "Fix" : "Renew"}</button>
+                        <button className="btn btn-sm" onClick={() => onNav && onNav("auth")}>{it.status === "fail" ? "Fix" : "Renew"}</button>
                       )}
                     </div>
                   ))}

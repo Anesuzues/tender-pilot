@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24h
     refresh_token_expire_minutes: int = 60 * 24 * 14  # 14 days
+    reset_token_expire_minutes: int = 30  # password reset link validity
+
+    # --- Email (Resend) ---
+    # Set RESEND_API_KEY to enable real transactional email (password resets).
+    # Without it, emails are logged server-side and flows still complete.
+    resend_api_key: str | None = None
+    email_from: str = "TenderPilot <onboarding@resend.dev>"
+    # Public app URL used to build links in emails (e.g. password reset).
+    app_url: str = "https://tender-pilot-seven.vercel.app"
 
     # --- CORS ---
     # Set CORS_ORIGINS env var to comma-separated domains in production.

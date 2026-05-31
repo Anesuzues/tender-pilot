@@ -252,7 +252,8 @@ function Landing({ onEnter }) {
               <button className="btn btn-lg" style={{ background: "white", color: "var(--navy)", borderColor: "white" }} onClick={onEnter}>
                 Try the demo <Icon.arrow size={14}/>
               </button>
-              <button className="btn btn-lg" style={{ background: "transparent", color: "white", borderColor: "rgba(255,255,255,.3)" }}>
+              <button className="btn btn-lg" style={{ background: "transparent", color: "white", borderColor: "rgba(255,255,255,.3)" }}
+                      onClick={() => { window.location.href = "mailto:hello@tenderpilot.ai?subject=Book%20a%20TenderPilot%20walkthrough"; }}>
                 Book a walkthrough
               </button>
             </div>

@@ -14,15 +14,20 @@ import jwt
 from app.deps import CurrentUser, DbSession
 from app.models.company import Company
 from app.models.user import ROLE_OWNER, User
+from app.config import settings
 from app.schemas.auth import (
     AuthResult,
+    ForgotPasswordRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenPair,
     UserOut,
 )
+from app.schemas.common import Message
 from app.security import create_token, decode_token, hash_password, verify_password
+from app.services.email import send_email
 from app.services.events import audit, track
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -110,6 +115,55 @@ async def refresh(payload: RefreshRequest, db: DbSession) -> TokenPair:
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token")
     return _tokens(user)
+
+
+@router.post("/forgot-password", response_model=Message)
+@_limiter.limit("5/minute")
+async def forgot_password(
+    request: Request, payload: ForgotPasswordRequest, db: DbSession
+) -> Message:
+    """Send a password-reset link. Always returns success to prevent account
+    enumeration; only sends an email if the account actually exists."""
+    user = (
+        await db.execute(select(User).where(User.email == payload.email.lower()))
+    ).scalar_one_or_none()
+    if user and user.is_active:
+        token = create_token(user.id, "access", scope="password_reset")
+        reset_link = f"{settings.app_url}/?reset_token={token}"
+        await send_email(
+            to=user.email,
+            subject="Reset your TenderPilot password",
+            html=(
+                f"<p>Hi{(' ' + user.full_name) if user.full_name else ''},</p>"
+                f"<p>We received a request to reset your TenderPilot password. "
+                f"Click the link below to choose a new one (valid for "
+                f"{settings.reset_token_expire_minutes} minutes):</p>"
+                f'<p><a href="{reset_link}">Reset my password</a></p>'
+                f"<p>If you didn't request this, you can safely ignore this email.</p>"
+            ),
+            text=f"Reset your TenderPilot password: {reset_link}",
+        )
+    return Message(message="If an account exists for that email, a reset link has been sent.")
+
+
+@router.post("/reset-password", response_model=Message)
+@_limiter.limit("5/minute")
+async def reset_password(
+    request: Request, payload: ResetPasswordRequest, db: DbSession
+) -> Message:
+    try:
+        claims = decode_token(payload.token)
+        if claims.get("scope") != "password_reset":
+            raise ValueError("wrong scope")
+        user_id = claims["sub"]
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset link")
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset link")
+    user.hashed_password = hash_password(payload.new_password)
+    await audit(db, user.id, "user.reset_password", "user", user.id)
+    return Message(message="Password updated. You can now sign in with your new password.")
 
 
 @router.get("/me", response_model=UserOut)

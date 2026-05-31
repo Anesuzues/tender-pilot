@@ -71,7 +71,7 @@ function App() {
     vault:      <DocumentVault onNav={navigate}/>,
     analytics:  <Analytics/>,
     profile:    <CompanyProfile/>,
-    pricing:    <Pricing/>,
+    pricing:    <Pricing onNav={navigate}/>,
     admin:      <Admin/>,
   };
 

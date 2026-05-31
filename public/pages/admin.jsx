@@ -7,8 +7,8 @@ function Admin() {
         title="Admin Dashboard"
         subtitle="Workspace usage, billing, team management and AI system health."
         actions={<>
-          <button className="btn btn-sm"><Icon.download size={13}/> Audit log</button>
-          <button className="btn btn-sm btn-primary"><Icon.plus size={13}/> Invite user</button>
+          <button className="btn btn-sm" onClick={() => window.toast && toast("Audit log export — available on the Enterprise plan.")}><Icon.download size={13}/> Audit log</button>
+          <button className="btn btn-sm btn-primary" onClick={() => { window.location.href = "mailto:?subject=Join%20our%20TenderPilot%20workspace&body=I'd%20like%20to%20invite%20you%20to%20our%20TenderPilot%20workspace."; }}><Icon.plus size={13}/> Invite user</button>
         </>}
       />
 
@@ -33,7 +33,7 @@ function Admin() {
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>User management</div>
               <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>11 seats in use across 3 companies</div>
             </div>
-            <button className="btn btn-sm"><Icon.filter size={12}/> Filter</button>
+            <button className="btn btn-sm" onClick={() => window.toast && toast("User filtering — available on the Enterprise plan.")}><Icon.filter size={12}/> Filter</button>
           </div>
           <table className="table">
             <thead><tr><th>User</th><th>Role</th><th>Company</th><th>Tenders</th><th>Last active</th><th></th></tr></thead>
@@ -59,7 +59,7 @@ function Admin() {
                   <td style={{ fontSize: 12.5 }}>{u.c}</td>
                   <td className="mono tnum">{u.t}</td>
                   <td className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{u.l}</td>
-                  <td><button className="btn btn-sm btn-ghost btn-icon"><Icon.more size={12}/></button></td>
+                  <td><button className="btn btn-sm btn-ghost btn-icon" onClick={() => window.toast && toast("User management actions — Enterprise plan.")}><Icon.more size={12}/></button></td>
                 </tr>
               ))}
             </tbody>

@@ -192,7 +192,7 @@ function TenderUpload({ onNav }) {
                 <td><div className="mono" style={{ fontSize: 12 }}>{r.f || r.title || "—"}</div></td>
                 <td style={{ fontSize: 12.5 }}>{r.t}</td>
                 <td><StatusChip status={r.status}/></td>
-                <td><button className="btn btn-sm btn-ghost btn-icon"><Icon.more size={12}/></button></td>
+                <td><button className="btn btn-sm btn-ghost btn-icon" onClick={() => r.id ? onNav("analysis", { tenderId: r.id }) : (window.toast && toast("Open this tender from the Tenders list."))}><Icon.more size={12}/></button></td>
               </tr>
             ))}
           </tbody>

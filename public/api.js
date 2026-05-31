@@ -109,6 +109,20 @@
 
     async me() { return this._fetch("/auth/me"); }
 
+    async forgotPassword(email) {
+      return this._fetch("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+    }
+
+    async resetPassword(token, new_password) {
+      return this._fetch("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password }),
+      });
+    }
+
     logout() { this.setToken(null); }
 
     /* -- Tenders -- */
@@ -246,9 +260,62 @@
     async deleteDocument(docId) {
       return this._fetch("/documents/" + docId, { method: "DELETE" });
     }
+
+    /* -- File downloads (return Blob) -- */
+    async _downloadBlob(path) {
+      const headers = {};
+      if (this._token) headers["Authorization"] = "Bearer " + this._token;
+      const res = await fetch(BASE + path, { headers });
+      if (!res.ok) throw new Error("Download failed (" + res.status + ")");
+      return res.blob();
+    }
+    async downloadTenderFile(apiId) { return this._downloadBlob("/tenders/" + apiId + "/file"); }
+    async downloadDocumentFile(docId) { return this._downloadBlob("/documents/" + docId + "/file"); }
+  }
+
+  /* ---------- shared client-side helpers ---------- */
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback for non-secure contexts
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); ta.remove();
+        return true;
+      } catch { return false; }
+    }
+  }
+
+  function toast(msg) {
+    let el = document.getElementById("tp-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "tp-toast";
+      el.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0E1216;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,.25);transition:opacity .2s,transform .2s;opacity:0;";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = "1"; el.style.transform = "translateX(-50%) translateY(0)";
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateX(-50%) translateY(8px)"; }, 2400);
   }
 
   window.API = new ApiClient();
   window.normalizeTender = normalizeTender;
   window.normalizeDoc = normalizeDoc;
+  window.downloadBlob = downloadBlob;
+  window.copyToClipboard = copyToClipboard;
+  window.toast = toast;
 })(window);

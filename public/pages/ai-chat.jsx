@@ -59,6 +59,30 @@ function AIChat({ onNav, activeTenderId }) {
     }, 1400);
   };
 
+  const newChat = async () => {
+    setMessages([{ who: "ai", text: "New conversation started. Ask me anything about your tenders.", sources: [] }]);
+    setInput("");
+    if (window.API && API.isLoggedIn()) {
+      try {
+        const sess = await API.createChatSession(activeTenderId || null);
+        setSessionId(sess.id);
+      } catch (e) {}
+    }
+  };
+
+  const lastAiQuestion = React.useRef("");
+  const regenerate = () => {
+    // Re-ask the most recent user question
+    const lastUser = [...messages].reverse().find(m => m.who === "user");
+    if (lastUser) send(lastUser.text);
+  };
+
+  const copyConversation = async () => {
+    const text = messages.map(m => `${m.who === "user" ? "You" : "TenderPilot"}: ${m.text}`).join("\n\n");
+    const ok = await window.copyToClipboard(text);
+    window.toast && toast(ok ? "Conversation copied" : "Copy failed");
+  };
+
   const contextTender = TENDERS[0];
 
   return (
@@ -67,7 +91,7 @@ function AIChat({ onNav, activeTenderId }) {
       <aside style={{ borderRight: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto", display: "flex", flexDirection: "column" }} className="chat-history">
         <div style={{ padding: "14px 14px 8px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 600 }}>Conversations</div>
-          <button className="btn btn-sm btn-ghost btn-icon" style={{ marginLeft: "auto" }}><Icon.plus size={12}/></button>
+          <button className="btn btn-sm btn-ghost btn-icon" style={{ marginLeft: "auto" }} title="New conversation" onClick={newChat}><Icon.plus size={12}/></button>
         </div>
         <div style={{ padding: "0 8px", flex: 1, overflowY: "auto" }}>
           {Object.entries(groupBy(sessions, "date")).map(([date, items]) => (
@@ -92,12 +116,12 @@ function AIChat({ onNav, activeTenderId }) {
             <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Context: RFB 2025/IT/0142 · {messages.length} messages{sessionId ? " · live" : " · demo mode"}</div>
           </div>
           <span className="chip"><Icon.fingerprint size={10}/>POPIA encrypted</span>
-          <button className="btn btn-sm btn-ghost"><Icon.copy size={12}/></button>
+          <button className="btn btn-sm btn-ghost" title="Copy conversation" onClick={copyConversation}><Icon.copy size={12}/></button>
         </div>
 
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px 16px" }}>
           <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-            {messages.map((m, i) => <MessageBubble key={i} m={m}/>)}
+            {messages.map((m, i) => <MessageBubble key={i} m={(m.who === "ai" && i === messages.length - 1) ? { ...m, onRegenerate: regenerate } : m}/>)}
             {typing && (
               <div style={{ display: "flex", gap: 12 }}>
                 <AIAvatar/>
@@ -212,8 +236,8 @@ function MessageBubble({ m }) {
           </div>
         )}
         <div style={{ display: "flex", gap: 4, marginTop: 12 }}>
-          <button className="btn btn-sm btn-ghost btn-icon"><Icon.copy size={12}/></button>
-          <button className="btn btn-sm btn-ghost btn-icon"><Icon.refresh size={12}/></button>
+          <button className="btn btn-sm btn-ghost btn-icon" title="Copy" onClick={async () => { const ok = await window.copyToClipboard(m.text || ""); window.toast && toast(ok ? "Copied" : "Copy failed"); }}><Icon.copy size={12}/></button>
+          {m.onRegenerate && <button className="btn btn-sm btn-ghost btn-icon" title="Regenerate" onClick={m.onRegenerate}><Icon.refresh size={12}/></button>}
         </div>
       </div>
     </div>

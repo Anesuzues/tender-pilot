@@ -25,8 +25,16 @@ function Analytics() {
         subtitle="Pipeline performance, compliance trends and AI usage across your workspace."
         actions={
           <>
-            <button className="btn btn-sm"><Icon.calendar size={13}/> Last 6 months</button>
-            <button className="btn btn-sm"><Icon.download size={13}/> Export</button>
+            <button className="btn btn-sm" onClick={() => window.toast && toast("Custom date ranges are coming soon. Showing the last 6 months.")}><Icon.calendar size={13}/> Last 6 months</button>
+            <button className="btn btn-sm" onClick={() => {
+              const rows = [["Metric","Value"],
+                ["Active tenders", activeTenders],
+                ["Avg bid readiness %", avgScore],
+                ["Vault completeness %", vaultScore]];
+              activityData.forEach(m => rows.push([`Activity ${m.m} (uploaded/won)`, `${m.uploaded}/${m.won}`]));
+              const csv = rows.map(r => r.map(c => `"${String(c)}"`).join(",")).join("\n");
+              window.downloadBlob(new Blob([csv], { type: "text/csv" }), "tenderpilot-analytics.csv");
+            }}><Icon.download size={13}/> Export</button>
           </>
         }
       />

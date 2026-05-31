@@ -1,6 +1,10 @@
 /* ---------- Pricing ---------- */
-function Pricing() {
+function Pricing({ onNav }) {
   const [yearly, setYearly] = React.useState(true);
+  const goSignup = () => {
+    if (window.API && API.isLoggedIn()) { window.toast && toast("You're already signed in — manage billing from Admin."); }
+    else if (onNav) onNav("auth");
+  };
 
   const plans = [
     {
@@ -84,7 +88,7 @@ function Pricing() {
                 <div style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.025em" }}>{p.price}</div>
               )}
             </div>
-            <button className={cx("btn", p.highlight ? "btn-primary" : "btn-dark")} style={{ justifyContent: "center" }}>
+            <button className={cx("btn", p.highlight ? "btn-primary" : "btn-dark")} style={{ justifyContent: "center" }} onClick={goSignup}>
               {p.cta}<Icon.arrow size={13}/>
             </button>
             <div className="divider"/>

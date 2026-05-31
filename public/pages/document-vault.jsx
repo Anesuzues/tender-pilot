@@ -1,29 +1,47 @@
 /* ---------- Document Vault ---------- */
 function DocumentVault({ onNav }) {
+  const isLoggedIn = window.API && API.isLoggedIn();
   const [filter, setFilter] = React.useState("all");
+  const [statusFilter, setStatusFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
-  const [allDocs, setAllDocs] = React.useState(COMPLIANCE_DOCS);
+  const [allDocs, setAllDocs] = React.useState(isLoggedIn ? [] : COMPLIANCE_DOCS);
   const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState(null);
   const fileInputRef = React.useRef();
 
   React.useEffect(() => {
-    if (!window.API || !API.isLoggedIn()) return;
-    API.getDocuments().then(docs => { if (docs && docs.length) setAllDocs(docs); }).catch(() => {});
+    if (!isLoggedIn) return;
+    API.getDocuments().then(docs => { setAllDocs(docs || []); }).catch(() => {});
   }, []);
 
   const handleFileChange = async (e) => {
     const file = e.target.files && e.target.files[0];
-    if (!file || !window.API || !API.isLoggedIn()) return;
-    setUploading(true);
+    if (!file) return;
+    if (!isLoggedIn) { setError("Sign in to upload documents."); e.target.value = ""; return; }
+    setUploading(true); setError(null);
     try {
-      const doc = await API.uploadDocument(file, "Other", file.name);
+      const raw = await API.uploadDocument(file, "Other", file.name);
+      const doc = window.normalizeDoc ? window.normalizeDoc(raw) : raw;
       setAllDocs(d => [...d, doc]);
+      window.toast && toast(`Uploaded · classified as ${doc.category}`);
     } catch (err) {
-      // silent — user sees no change
+      setError(err.message || "Upload failed. Please try again.");
     } finally {
       setUploading(false);
       e.target.value = "";
     }
+  };
+
+  const downloadDoc = async (d) => {
+    if (!isLoggedIn || !d.id) { window.toast && toast("Sign in to download."); return; }
+    try { const b = await API.downloadDocumentFile(d.id); window.downloadBlob(b, d.name || "document"); }
+    catch { window.toast && toast("Could not download this document."); }
+  };
+
+  const deleteDoc = async (d) => {
+    if (!isLoggedIn || !d.id) return;
+    try { await API.deleteDocument(d.id); setAllDocs(list => list.filter(x => x.id !== d.id)); window.toast && toast("Document deleted"); }
+    catch { window.toast && toast("Could not delete."); }
   };
 
   const catIds = ["all","CSD","Tax","B-BBEE","CIPC","Insurance","Bank Letter","SBD Forms","Capability"];
@@ -32,9 +50,13 @@ function DocumentVault({ onNav }) {
     count: id === "all" ? allDocs.length : allDocs.filter(d => d.category === id).length,
   }));
 
+  const STATUS_CYCLE = ["all", "valid", "expiring", "expired", "missing"];
+  const cycleStatus = () => setStatusFilter(s => STATUS_CYCLE[(STATUS_CYCLE.indexOf(s) + 1) % STATUS_CYCLE.length]);
+
   const docs = allDocs
     .filter(d => filter === "all" || d.category === filter)
-    .filter(d => !search || d.name.toLowerCase().includes(search.toLowerCase()));
+    .filter(d => statusFilter === "all" || d.status === statusFilter)
+    .filter(d => !search || (d.name || "").toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="page">
@@ -54,6 +76,10 @@ function DocumentVault({ onNav }) {
           </>
         }
       />
+
+      {error && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(239,68,68,.08)", border: "1px solid var(--red)", borderRadius: 8, fontSize: 12.5, color: "var(--red)" }}>{error}</div>
+      )}
 
       {/* Stats */}
       <div className="grid g-4" style={{ marginBottom: 16 }}>
@@ -84,7 +110,6 @@ function DocumentVault({ onNav }) {
             </div>
           </div>
           <div className="row gap-2">
-            <button className="btn btn-sm">From cloud</button>
             <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current && fileInputRef.current.click()}>Choose files</button>
           </div>
         </div>
@@ -107,18 +132,37 @@ function DocumentVault({ onNav }) {
           ))}
         </div>
         <div style={{ flex: 1 }}/>
-        <button className="btn btn-sm btn-ghost"><Icon.filter size={12}/> Status</button>
+        <button className="btn btn-sm btn-ghost" onClick={cycleStatus}>
+          <Icon.filter size={12}/> Status{statusFilter !== "all" ? `: ${statusFilter}` : ""}
+        </button>
       </div>
 
       {/* Document grid */}
-      <div className="grid g-3">
-        {docs.map(d => <DocCard key={d.id} d={d}/>)}
-      </div>
+      {docs.length === 0 ? (
+        <div className="card" style={{ padding: "48px 24px", textAlign: "center", color: "var(--text-3)" }}>
+          <Icon.doc size={24} style={{ opacity: .4, marginBottom: 10 }}/>
+          <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-2)", marginBottom: 4 }}>
+            {allDocs.length === 0 ? "Your vault is empty" : "No documents match these filters"}
+          </div>
+          <div style={{ fontSize: 12.5, marginBottom: 16 }}>
+            {allDocs.length === 0 ? "Upload your compliance documents — AI auto-classifies them." : "Try clearing the search or status filter."}
+          </div>
+          {allDocs.length === 0 && (
+            <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
+              <Icon.upload size={12}/> Upload a document
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid g-3">
+          {docs.map(d => <DocCard key={d.id} d={d} onDownload={() => downloadDoc(d)} onDelete={() => deleteDoc(d)} onUpload={() => fileInputRef.current && fileInputRef.current.click()}/>)}
+        </div>
+      )}
     </div>
   );
 }
 
-function DocCard({ d }) {
+function DocCard({ d, onDownload, onDelete, onUpload }) {
   const isMissing = d.status === "missing";
   return (
     <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", minHeight: 200, position: "relative", opacity: isMissing ? 0.92 : 1 }}>
@@ -168,13 +212,12 @@ function DocCard({ d }) {
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
         {isMissing ? (
           <>
-            <button className="btn btn-sm btn-primary" style={{ flex: 1, justifyContent: "center" }}><Icon.sparkles size={11}/>AI generate</button>
-            <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }}>Upload</button>
+            <button className="btn btn-sm btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={onUpload}><Icon.upload size={11}/>Upload</button>
           </>
         ) : (
           <>
-            <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }}><Icon.download size={11}/>Download</button>
-            <button className="btn btn-sm btn-ghost btn-icon"><Icon.more size={12}/></button>
+            <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={onDownload}><Icon.download size={11}/>Download</button>
+            <button className="btn btn-sm btn-ghost btn-icon" title="Delete" onClick={onDelete}><Icon.trash size={12}/></button>
           </>
         )}
       </div>

@@ -1,8 +1,14 @@
-/* ---------- Authentication (Login / Register) ---------- */
+/* ---------- Authentication (Login / Register / Reset) ---------- */
 function Auth({ onEnter, mode = "login" }) {
-  const [m, setMode] = React.useState(mode);
+  // Detect a password-reset link: ?reset_token=...
+  const resetToken = React.useMemo(() => {
+    try { return new URLSearchParams(window.location.search).get("reset_token"); } catch { return null; }
+  }, []);
+
+  const [m, setMode] = React.useState(resetToken ? "reset" : mode);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [notice, setNotice] = React.useState(null);
 
   const emailRef = React.useRef();
   const passwordRef = React.useRef();
@@ -12,6 +18,7 @@ function Auth({ onEnter, mode = "login" }) {
 
   const submit = async () => {
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
       if (!window.API) throw new Error("API client not loaded");
@@ -27,10 +34,19 @@ function Auth({ onEnter, mode = "login" }) {
           company_name: (companyRef.current && companyRef.current.value) || undefined,
         });
         onEnter(u);
-      } else {
-        // Forgot password — email not yet configured
+      } else if (m === "forgot") {
+        const res = await API.forgotPassword(emailRef.current.value);
         setLoading(false);
-        setError("Password reset emails are not enabled yet. Email support@tenderpilot.ai with your registered address and we'll reset it manually.");
+        setNotice(res.message || "If an account exists for that email, a reset link has been sent.");
+      } else if (m === "reset") {
+        const pw = passwordRef.current.value;
+        if (!pw || pw.length < 8) { setLoading(false); setError("Password must be at least 8 characters."); return; }
+        const res = await API.resetPassword(resetToken, pw);
+        setLoading(false);
+        setNotice(res.message || "Password updated. You can now sign in.");
+        // Clean the token from the URL and switch to login
+        try { window.history.replaceState({}, "", window.location.pathname); } catch {}
+        setMode("login");
       }
     } catch (e) {
       setError(e.message || "Something went wrong. Please try again.");
@@ -55,11 +71,12 @@ function Auth({ onEnter, mode = "login" }) {
           </div>
 
           <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.022em", margin: 0 }}>
-            {m === "login" ? "Welcome back" : m === "register" ? "Create your account" : "Reset your password"}
+            {m === "login" ? "Welcome back" : m === "register" ? "Create your account" : m === "reset" ? "Choose a new password" : "Reset your password"}
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 8 }}>
             {m === "login" ? "Sign in to continue to your workspace."
              : m === "register" ? "Start your 14-day free trial. No card required."
+             : m === "reset" ? "Enter a new password for your account."
              : "Enter your email and we'll send you a reset link."}
           </p>
 
@@ -68,28 +85,35 @@ function Auth({ onEnter, mode = "login" }) {
               {error}
             </div>
           )}
+          {notice && (
+            <div style={{ marginTop: 16, padding: "10px 14px", background: "var(--emerald-soft)", border: "1px solid var(--emerald)", borderRadius: 8, fontSize: 12.5, color: "var(--emerald)" }}>
+              {notice}
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 28 }}>
             {m === "register" && (
               <div className="grid g-2" style={{ gap: 10 }}>
-                <div><label className="label">First name</label><input ref={firstNameRef} className="input" placeholder="Lerato" onKeyDown={onKey}/></div>
-                <div><label className="label">Last name</label><input ref={lastNameRef} className="input" placeholder="Mokoena" onKeyDown={onKey}/></div>
+                <div><label className="label">First name</label><input ref={firstNameRef} className="input" placeholder="First name" onKeyDown={onKey}/></div>
+                <div><label className="label">Last name</label><input ref={lastNameRef} className="input" placeholder="Last name" onKeyDown={onKey}/></div>
               </div>
             )}
             {m === "register" && (
               <div><label className="label">Company name</label><input ref={companyRef} className="input" placeholder="Your company (Pty) Ltd" onKeyDown={onKey}/></div>
             )}
-            <div>
-              <label className="label">Work email</label>
-              <input ref={emailRef} className="input" type="email" placeholder={m === "register" ? "you@company.co.za" : "demo@tenderpilot.ai"} onKeyDown={onKey}/>
-            </div>
-            {m !== "forgot" && (
+            {m !== "reset" && (
+              <div>
+                <label className="label">Work email</label>
+                <input ref={emailRef} className="input" type="email" placeholder={m === "register" ? "you@company.co.za" : "demo@tenderpilot.ai"} onKeyDown={onKey}/>
+              </div>
+            )}
+            {(m !== "forgot") && (
               <div>
                 <div className="between" style={{ marginBottom: 6 }}>
-                  <label className="label" style={{ marginBottom: 0 }}>Password</label>
-                  {m === "login" && <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: 0 }} onClick={() => setMode("forgot")}>Forgot?</button>}
+                  <label className="label" style={{ marginBottom: 0 }}>{m === "reset" ? "New password" : "Password"}</label>
+                  {m === "login" && <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: 0 }} onClick={() => { setError(null); setNotice(null); setMode("forgot"); }}>Forgot?</button>}
                 </div>
-                <input ref={passwordRef} className="input" type="password" placeholder={m === "register" ? "Min. 8 characters" : "••••••••"} onKeyDown={onKey}/>
+                <input ref={passwordRef} className="input" type="password" placeholder={(m === "register" || m === "reset") ? "Min. 8 characters" : "••••••••"} onKeyDown={onKey}/>
               </div>
             )}
 
@@ -99,11 +123,11 @@ function Auth({ onEnter, mode = "login" }) {
               onClick={submit}
               disabled={loading}
             >
-              {loading ? "Please wait…" : m === "login" ? "Sign in" : m === "register" ? "Create account" : "Send reset link"}
+              {loading ? "Please wait…" : m === "login" ? "Sign in" : m === "register" ? "Create account" : m === "reset" ? "Update password" : "Send reset link"}
               {!loading && <Icon.arrow size={14}/>}
             </button>
 
-            {m !== "forgot" && (
+            {(m === "login" || m === "register") && (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--text-3)", fontSize: 11, margin: "4px 0" }}>
                   <div className="divider"/><span>OR</span><div className="divider"/>

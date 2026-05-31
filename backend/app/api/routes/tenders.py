@@ -159,6 +159,24 @@ async def get_tender(tender_id: str, company_id: CompanyId, db: DbSession) -> Te
     return _to_detail(tender)
 
 
+@router.get("/{tender_id}/file")
+async def download_tender_file(tender_id: str, company_id: CompanyId, db: DbSession):
+    from fastapi.responses import Response
+    tender = await _get_owned(db, tender_id, company_id)
+    if not tender.storage_key:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No source file on record")
+    try:
+        data = get_storage().read(tender.storage_key)
+    except Exception:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found in storage")
+    fname = tender.file_name or f"tender-{tender.id[:8]}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @router.patch("/{tender_id}", response_model=TenderOut)
 async def update_tender(
     tender_id: str, payload: TenderUpdate, company_id: CompanyId, db: DbSession

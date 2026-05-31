@@ -23,7 +23,12 @@ function TendersList({ onNav }) {
         subtitle={`${allTenders.length} active opportunities`}
         actions={
           <>
-            <button className="btn btn-sm"><Icon.filter size={13}/> Filter</button>
+            <button className="btn btn-sm" disabled={allTenders.length === 0} onClick={() => {
+              const rows = [["Reference","Title","Issuer","Value","Deadline","Status","Score"]];
+              allTenders.forEach(t => rows.push([t.id, t.title, t.issuer, t.value, t.deadline, t.status, t.score]));
+              const csv = rows.map(r => r.map(c => `"${String(c == null ? "" : c).replace(/"/g,'""')}"`).join(",")).join("\n");
+              window.downloadBlob(new Blob([csv], { type: "text/csv" }), "tenders.csv");
+            }}><Icon.download size={13}/> Export</button>
             <button className="btn btn-sm btn-primary" onClick={() => onNav("upload")}>
               <Icon.plus size={13}/> Upload tender
             </button>

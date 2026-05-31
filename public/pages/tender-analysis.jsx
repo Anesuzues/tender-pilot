@@ -63,9 +63,16 @@ function TenderAnalysis({ onNav, tenderId }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-sm"><Icon.download size={13}/> Original PDF</button>
-              <button className="btn btn-sm"><Icon.copy size={13}/> Share</button>
-              <button className="btn btn-sm btn-primary" onClick={() => onNav("builder")}>
+              <button className="btn btn-sm" onClick={async () => {
+                if (!tenderData || !tenderData._apiId) { window.toast && toast("Original PDF available after upload."); return; }
+                try { const b = await API.downloadTenderFile(tenderData._apiId); window.downloadBlob(b, (t.title || "tender") + ".pdf"); }
+                catch { window.toast && toast("Could not download the source PDF."); }
+              }}><Icon.download size={13}/> Original PDF</button>
+              <button className="btn btn-sm" onClick={async () => {
+                const ok = await window.copyToClipboard(window.location.href);
+                window.toast && toast(ok ? "Link copied to clipboard" : "Copy failed");
+              }}><Icon.copy size={13}/> Share</button>
+              <button className="btn btn-sm btn-primary" onClick={() => onNav("builder", tenderData && tenderData._apiId ? { tenderId: tenderData._apiId } : {})}>
                 <Icon.edit size={13}/> Start proposal
               </button>
             </div>
@@ -155,8 +162,8 @@ function TenderAnalysis({ onNav, tenderId }) {
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
                     <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>{d.note}</div>
                     <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                      <button className="btn btn-sm">{d.action}</button>
-                      <button className="btn btn-sm btn-ghost"><Icon.sparkles size={11}/> Ask AI</button>
+                      <button className="btn btn-sm" onClick={() => onNav("vault")}>{d.action}</button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => onNav("chat", tenderData && tenderData._apiId ? { tenderId: tenderData._apiId } : {})}><Icon.sparkles size={11}/> Ask AI</button>
                     </div>
                   </div>
                 </div>
@@ -203,8 +210,18 @@ function TenderAnalysis({ onNav, tenderId }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button className="btn btn-sm"><Icon.calendar size={12}/> Add briefing to calendar</button>
-              <button className="btn btn-sm btn-ghost"><Icon.copy size={12}/> Copy address</button>
+              <button className="btn btn-sm" onClick={() => {
+                const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TenderPilot//EN","BEGIN:VEVENT",
+                  "SUMMARY:Mandatory briefing — " + (t.title || "Tender"),
+                  "DTSTART:20260528T100000","DTEND:20260528T120000",
+                  "DESCRIPTION:Mandatory bid briefing. Non-attendance disqualifies the bid.",
+                  "END:VEVENT","END:VCALENDAR"].join("\r\n");
+                window.downloadBlob(new Blob([ics], { type: "text/calendar" }), "briefing.ics");
+              }}><Icon.calendar size={12}/> Add briefing to calendar</button>
+              <button className="btn btn-sm btn-ghost" onClick={async () => {
+                const ok = await window.copyToClipboard("The Procurement Officer, SARS Head Office, 299 Bronkhorst Street, Nieuw Muckleneuk, Pretoria 0181");
+                window.toast && toast(ok ? "Address copied" : "Copy failed");
+              }}><Icon.copy size={12}/> Copy address</button>
             </div>
           </Section>
         </div>
