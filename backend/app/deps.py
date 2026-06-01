@@ -76,3 +76,15 @@ def require_roles(*roles: str):
 
 
 AdminUser = Annotated[User, Depends(require_roles(ROLE_OWNER, ROLE_ADMIN))]
+
+
+async def require_superuser(user: CurrentUser) -> User:
+    if not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform super-admin only",
+        )
+    return user
+
+
+SuperUser = Annotated[User, Depends(require_superuser)]

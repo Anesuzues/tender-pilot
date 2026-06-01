@@ -50,3 +50,39 @@ class AdminOverview(BaseModel):
     embedding_provider: str
     storage_backend: str
     environment: str
+
+
+class PlatformCompanyRow(BaseModel):
+    id: str
+    name: str
+    province: str | None = None
+    bbbee_level: int | None = None
+    users: int
+    tenders: int
+    documents: int
+    created_at: str
+
+
+class PlatformUserRow(BaseModel):
+    id: str
+    email: str
+    full_name: str | None = None
+    role: str
+    is_superuser: bool
+    is_active: bool
+    company_id: str | None = None
+    created_at: str
+
+
+class PlatformOverview(BaseModel):
+    total_users: int
+    total_companies: int
+    total_tenders: int
+    total_documents: int
+    active_users_30d: int
+    ai_enabled: bool
+    llm_provider: str
+    storage_backend: str
+    environment: str
+    companies: list[PlatformCompanyRow]
+    recent_users: list[PlatformUserRow]

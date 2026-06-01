@@ -45,6 +45,7 @@ class UserOut(ORMModel):
     full_name: Optional[str] = None
     role: str
     is_active: bool
+    is_superuser: bool = False
     company_id: Optional[str] = None
 
 

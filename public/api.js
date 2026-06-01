@@ -261,6 +261,11 @@
       return this._fetch("/documents/" + docId, { method: "DELETE" });
     }
 
+    /* -- Admin / Platform -- */
+    async getAdminOverview() { return this._fetch("/admin/overview"); }
+    async getPlatformOverview() { return this._fetch("/admin/platform"); }
+    async getAuditLogs(limit) { return this._fetch("/admin/audit-logs" + qs({ limit })); }
+
     /* -- File downloads (return Blob) -- */
     async _downloadBlob(path) {
       const headers = {};

@@ -57,6 +57,40 @@ async def _seed_demo_user() -> None:
         logger.warning("Demo user seed failed (%s) — skipping", exc)
 
 
+async def _seed_superadmin() -> None:
+    """Create the platform super-admin on first boot (oversees all companies)."""
+    from sqlalchemy import select
+    from app.models.user import ROLE_ADMIN, User
+    from app.security import hash_password
+
+    email = settings.superadmin_email.lower()
+    try:
+        async with SessionLocal() as db:
+            existing = (
+                await db.execute(select(User).where(User.email == email))
+            ).scalar_one_or_none()
+            if existing:
+                # Ensure the flag stays set even if the row predates this feature.
+                if not existing.is_superuser:
+                    existing.is_superuser = True
+                    await db.commit()
+                    logger.info("Existing account promoted to super-admin: %s", email)
+                return
+            user = User(
+                email=email,
+                hashed_password=hash_password(settings.superadmin_password),
+                full_name="Platform Admin",
+                role=ROLE_ADMIN,
+                is_superuser=True,
+                company_id=None,
+            )
+            db.add(user)
+            await db.commit()
+            logger.info("Super-admin seeded: %s", email)
+    except Exception as exc:
+        logger.warning("Super-admin seed failed (%s) — skipping", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Auto-create tables when enabled (dev/demo). Disable + use Alembic in prod.
@@ -68,6 +102,7 @@ async def lifespan(app: FastAPI):
             logger.warning("auto_create_db failed (%s) — continuing startup", exc)
 
     await _seed_demo_user()
+    await _seed_superadmin()
 
     logger.info(
         "TenderPilot AI %s starting — env=%s ai_enabled=%s storage=%s",

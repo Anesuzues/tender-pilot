@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     refresh_token_expire_minutes: int = 60 * 24 * 14  # 14 days
     reset_token_expire_minutes: int = 30  # password reset link validity
 
+    # --- Platform super-admin ---
+    # Seeded on first boot. Override email/password via env in production.
+    # This account has is_superuser=True and can oversee ALL companies.
+    superadmin_email: str = "admin@tenderpilot.ai"
+    superadmin_password: str = "TenderPilotAdmin123!"
+
     # --- Email (Resend) ---
     # Set RESEND_API_KEY to enable real transactional email (password resets).
     # Without it, emails are logged server-side and flows still complete.

@@ -14,14 +14,14 @@ function App() {
   useEffectApp(() => {
     if (window.API && API.isLoggedIn()) {
       API.me()
-        .then(u => { setUser(u); setRoute("dashboard"); })
+        .then(u => { setUser(u); setRoute(u && u.is_superuser ? "admin" : "dashboard"); })
         .catch(() => { API.logout(); setRoute("auth"); });
     }
   }, []);
 
-  // Pre-fetch tenders for command palette when logged in
+  // Pre-fetch tenders for command palette when logged in (skip super-admin: no company)
   useEffectApp(() => {
-    if (!user || !window.API || !API.isLoggedIn()) return;
+    if (!user || user.is_superuser || !window.API || !API.isLoggedIn()) return;
     API.getTenders({ limit: 50 }).then(r => { if (r.items) setCmdTenders(r.items); }).catch(() => {});
   }, [user]);
 
@@ -54,7 +54,7 @@ function App() {
     setCmdOpen(false);
   };
 
-  const handleAuth = (u) => { setUser(u); setRoute("dashboard"); };
+  const handleAuth = (u) => { setUser(u); setRoute(u && u.is_superuser ? "admin" : "dashboard"); };
   const handleLogout = () => { if (window.API) API.logout(); setUser(null); setRoute("landing"); };
 
   if (route === "landing") return <><Landing onEnter={() => setRoute("auth")}/><PageNavToolbar setRoute={setRoute} theme={theme} setTheme={setTheme} user={user} onLogout={handleLogout}/></>;
@@ -72,7 +72,7 @@ function App() {
     analytics:  <Analytics/>,
     profile:    <CompanyProfile/>,
     pricing:    <Pricing onNav={navigate}/>,
-    admin:      <Admin/>,
+    admin:      <Admin user={user}/>,
   };
 
   const breadcrumbMap = {
