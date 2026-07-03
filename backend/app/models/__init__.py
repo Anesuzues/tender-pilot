@@ -20,7 +20,9 @@ from app.models.system import (  # noqa: F401
     Subscription,
     AnalyticsEvent,
     AuditLog,
+    AuthThrottle,
 )
+from app.models.public_tender import PublicTender  # noqa: F401
 
 __all__ = [
     "User",
@@ -39,4 +41,6 @@ __all__ = [
     "Subscription",
     "AnalyticsEvent",
     "AuditLog",
+    "AuthThrottle",
+    "PublicTender",
 ]

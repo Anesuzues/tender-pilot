@@ -190,14 +190,15 @@ const PROPOSAL_SECTIONS = [
 const NAV = [
   { section: "Workspace", items: [
     { id: "dashboard", label: "Dashboard", icon: "grid" },
-    { id: "tenders", label: "Tenders", icon: "file", count: 14 },
+    { id: "discover", label: "Discover Tenders", icon: "globe", badge: "NEW" },
+    { id: "tenders", label: "Tenders", icon: "file" },
     { id: "upload", label: "Upload Tender", icon: "upload" },
     { id: "analysis", label: "Tender Analysis", icon: "scan", badge: "AI" },
     { id: "chat", label: "AI Assistant", icon: "spark", badge: "AI" },
   ]},
   { section: "Proposals", items: [
     { id: "builder", label: "Proposal Builder", icon: "edit" },
-    { id: "compliance", label: "Compliance", icon: "shield", count: 3 },
+    { id: "compliance", label: "Compliance", icon: "shield" },
     { id: "vault", label: "Document Vault", icon: "vault" },
   ]},
   { section: "Insights", items: [

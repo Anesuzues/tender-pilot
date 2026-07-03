@@ -12,6 +12,7 @@
     { "source": "/openapi.json",  "destination": "/api/index" }
   ],
   "crons": [
-    { "path": "/health/db", "schedule": "0 6 * * *" }
+    { "path": "/health/db", "schedule": "0 6 * * *" },
+    { "path": "/api/v1/public-tenders/sync", "schedule": "30 4 * * *" }
   ]
 }

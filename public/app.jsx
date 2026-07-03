@@ -62,6 +62,7 @@ function App() {
 
   const pages = {
     dashboard:  <Dashboard onNav={navigate} user={user}/>,
+    discover:   <DiscoverTenders onNav={navigate} user={user}/>,
     tenders:    <TendersList onNav={navigate}/>,
     upload:     <TenderUpload onNav={navigate}/>,
     analysis:   <TenderAnalysis onNav={navigate} tenderId={activeTenderId}/>,
@@ -77,6 +78,7 @@ function App() {
 
   const breadcrumbMap = {
     dashboard: ["Workspace", "Dashboard"],
+    discover: ["Workspace", "Discover Tenders"],
     tenders: ["Workspace", "Tenders"],
     upload: ["Workspace", "Upload tender"],
     analysis: ["Workspace", "Tenders", "Analysis"],

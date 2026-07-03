@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # Set SENTRY_DSN to enable error reporting (free tier at sentry.io).
     sentry_dsn: str | None = None
 
+    # --- Scheduled jobs ---
+    # Vercel sends "Authorization: Bearer <CRON_SECRET>" on cron invocations
+    # when this env var is set; the eTenders sync endpoint checks it.
+    cron_secret: str | None = None
+
     # --- Email (Resend) ---
     # Set RESEND_API_KEY to enable real transactional email (password resets).
     # Without it, emails are logged server-side and flows still complete.

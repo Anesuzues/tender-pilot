@@ -261,6 +261,20 @@
       return this._fetch("/documents/" + docId, { method: "DELETE" });
     }
 
+    /* -- Public tender discovery (eTenders feed) -- */
+    async getPublicTenders(params) {
+      return this._fetch("/public-tenders" + qs(params));
+    }
+
+    async importPublicTender(publicId) {
+      const t = await this._fetch("/public-tenders/" + publicId + "/import", { method: "POST" });
+      return normalizeTender(t);
+    }
+
+    async syncPublicTenders() {
+      return this._fetch("/public-tenders/sync", { method: "POST" });
+    }
+
     /* -- Admin / Platform -- */
     async getAdminOverview() { return this._fetch("/admin/overview"); }
     async getPlatformOverview() { return this._fetch("/admin/platform"); }
