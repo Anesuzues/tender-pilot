@@ -3,7 +3,7 @@ function TendersList({ onNav }) {
   const [view, setView] = React.useState("table");
   const [filter, setFilter] = React.useState("all");
   const isLoggedIn = window.API && API.isLoggedIn();
-  const [allTenders, setAllTenders] = React.useState(isLoggedIn ? [] : TENDERS);
+  const [allTenders, setAllTenders] = React.useState([]);
   const [loading, setLoading] = React.useState(isLoggedIn);
 
   React.useEffect(() => {

@@ -234,9 +234,7 @@ function CommandPalette({ open, onClose, onNav, tenders }) {
     if (open) setQ("");
   }, [open]);
 
-  const realTenders = (tenders && tenders.length > 0) ? tenders : [];
-  const mockFallback = (!window.API || !API.isLoggedIn()) ? TENDERS : [];
-  const tenderItems = (realTenders.length ? realTenders : mockFallback)
+  const tenderItems = (tenders || [])
     .map(t => ({ id: t._apiId || t.id, label: t.title, kind: "Tender", to: "analysis", icon: "doc",
       tenderId: t._apiId || null }));
 

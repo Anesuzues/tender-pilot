@@ -1,286 +1,234 @@
-/* ---------- Tender Analysis ---------- */
+/* ---------- Tender Analysis (real data only) ---------- */
 function TenderAnalysis({ onNav, tenderId }) {
+  const isLoggedIn = window.API && API.isLoggedIn();
   const [tenderData, setTenderData] = React.useState(null);
   const [analysis, setAnalysis] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(!!tenderId);
+  const [running, setRunning] = React.useState(false);
   const [expanded, setExpanded] = React.useState(new Set(["req"]));
   const [aiPanelTab, setAiPanelTab] = React.useState("insights");
 
-  React.useEffect(() => {
-    if (!tenderId || !window.API || !API.isLoggedIn()) return;
+  const load = React.useCallback(async () => {
+    if (!tenderId || !isLoggedIn) { setLoading(false); return; }
     setLoading(true);
-    const load = async () => {
-      try {
-        const [tRes, aRes] = await Promise.allSettled([
-          API.getTenders({ limit: 1 }).then(r => r.items.find(t => t._apiId === tenderId) || null),
-          API.getAnalysis(tenderId),
-        ]);
-        if (tRes.status === "fulfilled" && tRes.value) setTenderData(tRes.value);
-        if (aRes.status === "fulfilled" && aRes.value) setAnalysis(aRes.value);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [tenderId]);
+    const [tRes, aRes] = await Promise.allSettled([
+      API.getTender(tenderId),
+      API.getAnalysis(tenderId),
+    ]);
+    if (tRes.status === "fulfilled" && tRes.value) setTenderData(tRes.value);
+    if (aRes.status === "fulfilled" && aRes.value) setAnalysis(aRes.value);
+    setLoading(false);
+  }, [tenderId, isLoggedIn]);
 
-  const t = tenderData || TENDERS[0];
+  React.useEffect(() => { load(); }, [load]);
 
-  const toggle = (k) => {
-    const s = new Set(expanded);
-    s.has(k) ? s.delete(k) : s.add(k);
-    setExpanded(s);
+  const runAnalysis = async () => {
+    setRunning(true);
+    try {
+      const a = await API.runAnalysis(tenderId);
+      setAnalysis(a);
+      const t = await API.getTender(tenderId).catch(() => null);
+      if (t) setTenderData(t);
+    } catch (e) {
+      window.toast && toast("Analysis failed — please retry.");
+    } finally {
+      setRunning(false);
+    }
   };
 
-  const totalScore = EVAL_CRITERIA.reduce((a, c) => a + c.score, 0);
-  const totalWeight = EVAL_CRITERIA.reduce((a, c) => a + c.weight, 0);
+  const toggle = (k) => { const s = new Set(expanded); s.has(k) ? s.delete(k) : s.add(k); setExpanded(s); };
+
+  // No tender selected
+  if (!tenderId) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div style={{ textAlign: "center", maxWidth: 400, padding: 32 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center", margin: "0 auto 18px" }}><Icon.scan size={24}/></div>
+          <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 10 }}>Select a tender to analyse</div>
+          <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 22 }}>Open a tender from your workspace, or discover and import one from the live government feed.</div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button className="btn btn-primary" onClick={() => onNav("tenders")}>My tenders</button>
+            <button className="btn" onClick={() => onNav("discover")}><Icon.globe size={13}/> Discover</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div style={{ textAlign: "center", color: "var(--text-3)" }}>
+          <span className="spin" style={{ display: "inline-block", width: 22, height: 22, borderRadius: 999, border: "2.5px solid var(--border-strong)", borderTopColor: "var(--emerald)", marginBottom: 12 }}/>
+          <div style={{ fontSize: 13 }}>Loading analysis…</div>
+        </div>
+      </div>
+    );
+  }
+
+  const t = tenderData || {};
+  const reqs = (analysis && analysis.requirements) || [];
+  const passCount = reqs.filter(r => r.status === "pass").length;
+  const warnCount = reqs.filter(r => r.status === "warn").length;
+  const failCount = reqs.filter(r => r.status === "fail").length;
+  const evalCriteria = (analysis && analysis.eval_criteria) || [];
+  const missing = (analysis && analysis.missing_documents) || [];
+  const citations = (analysis && analysis.citations) || [];
+  const score = t.score || (analysis && analysis.score) || 0;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", minHeight: 0, flex: 1 }} className="ta-grid">
-      {/* Main column */}
       <div style={{ overflowY: "auto" }}>
         <div className="page" style={{ paddingRight: 24 }}>
           {/* Header */}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 18, flexWrap: "wrap", marginBottom: 22 }}>
             <div style={{ flex: 1, minWidth: 280 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
                 <span className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{t.id}</span>
-                <span className="chip">{t.type}</span>
-                <RiskBadge risk={t.risk}/>
-                <span className="chip blue">
-                  <Icon.sparkles size={10}/>
-                  {loading ? "loading…" : analysis ? "AI parsed" : "AI parsed · 12s"}
-                </span>
+                {t.type && <span className="chip">{t.type}</span>}
+                {t.risk && <RiskBadge risk={t.risk}/>}
+                {analysis && <span className="chip blue"><Icon.sparkles size={10}/>AI analysed</span>}
               </div>
-              <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.022em", margin: 0, lineHeight: 1.18, maxWidth: 760, textWrap: "balance" }}>
-                {t.title}
-              </h1>
+              <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.022em", margin: 0, lineHeight: 1.18, maxWidth: 760, textWrap: "balance" }}>{t.title || "Untitled tender"}</h1>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 14, fontSize: 12.5, color: "var(--text-2)" }}>
-                <span><Icon.building size={12}/> {t.issuer}</span>
-                <span><Icon.globe size={12}/> {t.province || "National"}</span>
-                <span><Icon.calendar size={12}/> Published {t.publishedDate || "—"}</span>
-                <span><Icon.doc size={12}/> {t.pages || "—"} pages · {t.documents || "—"} appendices</span>
+                {t.issuer && <span><Icon.building size={12}/> {t.issuer}</span>}
+                {t.province && <span><Icon.globe size={12}/> {t.province}</span>}
+                {t.publishedDate && <span><Icon.calendar size={12}/> Published {t.publishedDate}</span>}
+                {t.pages ? <span><Icon.doc size={12}/> {t.pages} pages</span> : null}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-sm" onClick={async () => {
-                if (!tenderData || !tenderData._apiId) { window.toast && toast("Original PDF available after upload."); return; }
-                try { const b = await API.downloadTenderFile(tenderData._apiId); window.downloadBlob(b, (t.title || "tender") + ".pdf"); }
-                catch { window.toast && toast("Could not download the source PDF."); }
+                if (!t._apiId) { window.toast && toast("No source PDF for this tender."); return; }
+                try { const b = await API.downloadTenderFile(t._apiId); window.downloadBlob(b, (t.title || "tender") + ".pdf"); }
+                catch { window.toast && toast("No source PDF available."); }
               }}><Icon.download size={13}/> Original PDF</button>
-              <button className="btn btn-sm" onClick={async () => {
-                const ok = await window.copyToClipboard(window.location.href);
-                window.toast && toast(ok ? "Link copied to clipboard" : "Copy failed");
-              }}><Icon.copy size={13}/> Share</button>
-              <button className="btn btn-sm btn-primary" onClick={() => onNav("builder", tenderData && tenderData._apiId ? { tenderId: tenderData._apiId } : {})}>
-                <Icon.edit size={13}/> Start proposal
+              <button className="btn btn-sm" onClick={async () => { const ok = await window.copyToClipboard(window.location.href); window.toast && toast(ok ? "Link copied" : "Copy failed"); }}><Icon.copy size={13}/> Share</button>
+              <button className="btn btn-sm btn-primary" onClick={() => onNav("builder", t._apiId ? { tenderId: t._apiId } : {})}><Icon.edit size={13}/> Start proposal</button>
+            </div>
+          </div>
+
+          {/* No analysis yet → prompt to run it */}
+          {!analysis ? (
+            <div className="card" style={{ padding: 40, textAlign: "center" }}>
+              <Icon.sparkles size={26} style={{ color: "var(--emerald)", opacity: .6, marginBottom: 14 }}/>
+              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Run AI analysis</div>
+              <div style={{ fontSize: 13, color: "var(--text-2)", maxWidth: 420, margin: "0 auto 20px", lineHeight: 1.6 }}>
+                TenderPilot will read this tender, extract mandatory requirements with citations, score your bid readiness, and flag missing documents.
+              </div>
+              <button className="btn btn-primary" onClick={runAnalysis} disabled={running}>
+                {running ? <><span className="spin" style={{ display: "inline-block", width: 12, height: 12, borderRadius: 999, border: "2px solid white", borderTopColor: "transparent" }}/> Analysing…</> : <><Icon.scan size={13}/> Analyse tender</>}
               </button>
             </div>
-          </div>
-
-          {/* Hero metrics */}
-          <div className="card" style={{ padding: 22, marginBottom: 16, background: "linear-gradient(135deg, var(--surface), color-mix(in oklab, var(--emerald-soft), var(--surface) 70%))" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto", gap: 30, alignItems: "center" }} className="ta-metrics">
-              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <Ring value={t.score || 0} size={110} stroke={9}/>
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Bid readiness</div>
-                  <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, letterSpacing: "-0.014em" }}>
-                    {t.score >= 80 ? "Strong match" : t.score >= 60 ? "Good match" : "Needs attention"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4, maxWidth: 240 }}>
-                    {analysis && analysis.summary ? analysis.summary : "7 of 10 mandatory requirements met. 2 require attention."}
-                  </div>
-                </div>
-              </div>
-              <div className="vdivider" style={{ height: 70 }}/>
-              <Metric label="Closes in" value={t.closingDays != null ? String(t.closingDays) : "—"} unit="days" sub={t.deadline || ""} tone="amber"/>
-              <Metric label="Contract value" value={t.value ? t.value.replace(/[^0-9.MBK]/g, "").replace(/(\d+\.?\d*).*/, "$1") : "—"} unit={t.value ? (t.value.includes("M") ? "M" : "") : ""} sub="contract value"/>
-              <Metric label="Win probability" value="62" unit="%" sub="vs 28% peer avg" tone="emerald"/>
-            </div>
-          </div>
-
-          {/* Evaluation criteria */}
-          <Section title="Evaluation criteria" sub="PPPFA 90/10 split · functionality threshold 70 points" k="eval" expanded={expanded} toggle={toggle}>
-            <div className="grid g-3" style={{ marginBottom: 18 }}>
-              {EVAL_CRITERIA.map((c, i) => (
-                <div key={i} className="card card-pad-sm">
-                  <div className="between">
-                    <div style={{ fontSize: 12, color: "var(--text-2)" }}>{c.name}</div>
-                    <div className="mono tnum" style={{ fontSize: 11, color: "var(--text-3)" }}>{c.weight} pts</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 10 }}>
-                    <div className="tnum" style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.025em" }}>{c.score}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>/ {c.weight}</div>
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    <Bar value={(c.score / c.weight) * 100} color={c.score / c.weight >= 0.8 ? "var(--emerald)" : c.score / c.weight >= 0.6 ? "var(--amber)" : "var(--red)"}/>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="card card-pad-sm" style={{ background: "var(--surface-2)", borderStyle: "dashed" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
-                <Icon.info size={13} style={{ color: "var(--blue)" }}/>
-                <span>You are projected to score <b className="mono">{totalScore}/{totalWeight}</b>. The functionality threshold of <b className="mono">70</b> is met — your bid will be evaluated on price.</span>
-              </div>
-            </div>
-          </Section>
-
-          {/* Requirements checklist */}
-          <Section title="Mandatory requirements" sub="10 requirements detected · 7 pass · 2 caution · 1 fail" k="req" expanded={expanded} toggle={toggle}
-                   right={<span className="chip"><Icon.sparkles size={10}/>AI extracted with citations</span>}>
-            <div className="col gap-2">
-              {(analysis && analysis.requirements && analysis.requirements.length
-                ? analysis.requirements
-                : TENDER_REQUIREMENTS
-              ).map((r, i) => (
-                <RequirementRow key={r.id || i} r={r} index={i}/>
-              ))}
-            </div>
-          </Section>
-
-          {/* Missing docs */}
-          <Section title="Missing documents" sub="Generated by cross-referencing your vault against tender section 4" k="docs" expanded={expanded} toggle={toggle}
-                   right={<span className="chip red"><span className="chip-dot"/>3 missing</span>}>
-            <div className="grid g-2">
-              {[
-                { name: "SBD 4 · Declaration of Interest", note: "Not in vault. AI can auto-draft from your CIPC profile.", severity: "high", action: "Generate" },
-                { name: "Reference letter · SARS-equivalent (2 more)", note: "Only 1 of 3 reference letters provided. Reach out to NTSA Kenya and ZRA?", severity: "high", action: "Request" },
-                { name: "CrowdStrike Falcon certification (2 staff)", note: "Section 3.8 requires ≥2 certified engineers. Currently 0 in HR vault.", severity: "medium", action: "Upload" },
-              ].map((d, i) => (
-                <div key={i} className="card card-pad-sm" style={{ display: "flex", gap: 12 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                    background: d.severity === "high" ? "var(--red-soft)" : "var(--amber-soft)",
-                    color: d.severity === "high" ? "var(--red)" : "var(--amber)",
-                    display: "grid", placeItems: "center"
-                  }}>
-                    <Icon.alert size={15}/>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>{d.note}</div>
-                    <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                      <button className="btn btn-sm" onClick={() => onNav("vault")}>{d.action}</button>
-                      <button className="btn btn-sm btn-ghost" onClick={() => onNav("chat", tenderData && tenderData._apiId ? { tenderId: tenderData._apiId } : {})}><Icon.sparkles size={11}/> Ask AI</button>
+          ) : (
+            <>
+              {/* Hero metrics — real */}
+              <div className="card" style={{ padding: 22, marginBottom: 16, background: "linear-gradient(135deg, var(--surface), color-mix(in oklab, var(--emerald-soft), var(--surface) 70%))" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 30, alignItems: "center" }} className="ta-metrics">
+                  <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                    <Ring value={score} size={110} stroke={9}/>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Bid readiness</div>
+                      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 6, letterSpacing: "-0.014em" }}>{score >= 80 ? "Strong match" : score >= 60 ? "Good match" : "Needs attention"}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4, maxWidth: 260, lineHeight: 1.5 }}>
+                        {reqs.length ? `${passCount} of ${reqs.length} requirements met${warnCount ? `, ${warnCount} need attention` : ""}${failCount ? `, ${failCount} unmet` : ""}.` : "Analysis complete."}
+                      </div>
                     </div>
                   </div>
+                  <div className="vdivider" style={{ height: 70 }}/>
+                  <Metric label="Closes in" value={t.closingDays != null ? String(t.closingDays) : "—"} unit={t.closingDays != null ? "days" : ""} sub={t.deadline || ""} tone="amber"/>
+                  <Metric label="Recommendation" value={(analysis.recommendation || "review").toUpperCase()} unit="" sub={t.risk ? t.risk + " risk" : ""} tone={analysis.recommendation === "submit" ? "emerald" : "amber"}/>
                 </div>
-              ))}
-            </div>
-          </Section>
-
-          {/* Heat map */}
-          <Section title="Compliance coverage heatmap" sub="Your readiness across requirement clusters" k="heat" expanded={expanded} toggle={toggle}>
-            <Heatmap
-              rows={["Legal", "Financial", "Technical", "HR & Skills", "Operational"]}
-              cols={["Mandatory","Technical","Functional","Pricing","Preference"]}
-              getValue={(r, c) => {
-                const grid = [
-                  [.95,.85,.9,.7,.85],
-                  [.9,.7,.6,.85,.75],
-                  [.8,.5,.55,.6,.8],
-                  [.7,.4,.45,.7,.8],
-                  [.85,.7,.8,.75,.85],
-                ];
-                return grid[r][c];
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 18, fontSize: 11, color: "var(--text-3)" }}>
-              <span>Coverage scale:</span>
-              {[0.2,0.4,0.6,0.8,1].map(v => (
-                <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ width: 14, height: 10, borderRadius: 3, background: `rgba(4,120,87,${0.12 + v*0.65})`, border: "1px solid rgba(4,120,87,.18)" }}/>
-                  {Math.round(v*100)}%
-                </span>
-              ))}
-            </div>
-          </Section>
-
-          {/* Submission instructions */}
-          <Section title="Submission instructions" sub="Verbatim from page 27 · cross-checked against National Treasury guidelines" k="sub" expanded={expanded} toggle={toggle}>
-            <div className="card card-pad-sm" style={{ background: "var(--surface-2)" }}>
-              <div style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)", fontFamily: "var(--font-mono)" }}>
-                <b>1.</b> Submit by hand or courier to The Procurement Officer, SARS Head Office, 299 Bronkhorst Street, Nieuw Muckleneuk, Pretoria 0181.<br/>
-                <b>2.</b> Three (3) original sets and one (1) USB containing PDF copies of all documents.<br/>
-                <b>3.</b> Sealed in plain envelopes marked with the tender reference and "DO NOT OPEN BEFORE 12:00 ON 12 JUNE 2026".<br/>
-                <b>4.</b> No emailed or faxed submissions will be considered.<br/>
-                <b>5.</b> A mandatory briefing session will be held on 28 May 2026 at 10:00.
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button className="btn btn-sm" onClick={() => {
-                const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TenderPilot//EN","BEGIN:VEVENT",
-                  "SUMMARY:Mandatory briefing — " + (t.title || "Tender"),
-                  "DTSTART:20260528T100000","DTEND:20260528T120000",
-                  "DESCRIPTION:Mandatory bid briefing. Non-attendance disqualifies the bid.",
-                  "END:VEVENT","END:VCALENDAR"].join("\r\n");
-                window.downloadBlob(new Blob([ics], { type: "text/calendar" }), "briefing.ics");
-              }}><Icon.calendar size={12}/> Add briefing to calendar</button>
-              <button className="btn btn-sm btn-ghost" onClick={async () => {
-                const ok = await window.copyToClipboard("The Procurement Officer, SARS Head Office, 299 Bronkhorst Street, Nieuw Muckleneuk, Pretoria 0181");
-                window.toast && toast(ok ? "Address copied" : "Copy failed");
-              }}><Icon.copy size={12}/> Copy address</button>
-            </div>
-          </Section>
+
+              {/* Evaluation criteria — real, only if present */}
+              {evalCriteria.length > 0 && (
+                <Section title="Evaluation criteria" k="eval" expanded={expanded} toggle={toggle}>
+                  <div className="grid g-3">
+                    {evalCriteria.map((c, i) => (
+                      <div key={c.id || i} className="card card-pad-sm">
+                        <div className="between">
+                          <div style={{ fontSize: 12, color: "var(--text-2)" }}>{c.name}</div>
+                          <div className="mono tnum" style={{ fontSize: 11, color: "var(--text-3)" }}>{c.weight} pts</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 10 }}>
+                          <div className="tnum" style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.025em" }}>{c.score != null ? c.score : "—"}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-3)" }}>/ {c.weight}</div>
+                        </div>
+                        {c.score != null && <div style={{ marginTop: 10 }}><Bar value={(c.score / c.weight) * 100} color={c.score / c.weight >= 0.8 ? "var(--emerald)" : c.score / c.weight >= 0.6 ? "var(--amber)" : "var(--red)"}/></div>}
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Requirements — real */}
+              <Section title="Mandatory requirements"
+                       sub={reqs.length ? `${reqs.length} detected · ${passCount} pass · ${warnCount} caution · ${failCount} fail` : "None detected"}
+                       k="req" expanded={expanded} toggle={toggle}
+                       right={<span className="chip"><Icon.sparkles size={10}/>AI extracted</span>}>
+                {reqs.length ? (
+                  <div className="col gap-2">{reqs.map((r, i) => <RequirementRow key={r.id || i} r={r}/>)}</div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "12px 0" }}>No mandatory requirements were extracted from this document.</div>
+                )}
+              </Section>
+
+              {/* Missing documents — real */}
+              <Section title="Missing documents"
+                       sub="Compared against your compliance vault"
+                       k="docs" expanded={expanded} toggle={toggle}
+                       right={missing.length ? <span className="chip red"><span className="chip-dot"/>{missing.length} missing</span> : <span className="chip emerald"><span className="chip-dot"/>all present</span>}>
+                {missing.length ? (
+                  <div className="grid g-2">
+                    {missing.map((cat, i) => (
+                      <div key={i} className="card card-pad-sm" style={{ display: "flex", gap: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: "var(--red-soft)", color: "var(--red)", display: "grid", placeItems: "center" }}><Icon.alert size={15}/></div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{cat}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>No {cat} document found in your vault.</div>
+                          <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                            <button className="btn btn-sm" onClick={() => onNav("vault")}>Upload</button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => onNav("chat", t._apiId ? { tenderId: t._apiId } : {})}><Icon.sparkles size={11}/> Ask AI</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "12px 0" }}>Every required document category is present in your vault.</div>
+                )}
+              </Section>
+            </>
+          )}
         </div>
       </div>
 
-      {/* AI insights side panel */}
-      <aside style={{
-        borderLeft: "1px solid var(--border)", background: "var(--bg-elev)",
-        overflowY: "auto", display: "flex", flexDirection: "column", minHeight: 0
-      }} className="ta-aside">
+      {/* AI panel — real */}
+      <aside style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto", display: "flex", flexDirection: "column", minHeight: 0 }} className="ta-aside">
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
           <Icon.sparkles size={14} style={{ color: "var(--emerald)" }}/>
           <div style={{ fontSize: 13, fontWeight: 600 }}>AI Co-Pilot</div>
-          <span className="chip emerald" style={{ marginLeft: "auto", fontSize: 10 }}><span className="chip-dot pulse-dot"/>analyzing</span>
         </div>
-
         <div style={{ display: "flex", padding: "8px 12px 0", gap: 4 }}>
-          {[
-            { id: "insights", label: "Insights" },
-            { id: "recs", label: "Recommendations" },
-            { id: "sources", label: "Sources" },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setAiPanelTab(tab.id)}
-                    className={cx("btn btn-sm", aiPanelTab === tab.id ? "btn-dark" : "btn-ghost")}
-                    style={{ flex: 1, justifyContent: "center" }}>
-              {tab.label}
-            </button>
+          {[{ id: "insights", label: "Insights" }, { id: "sources", label: "Sources" }].map(tab => (
+            <button key={tab.id} onClick={() => setAiPanelTab(tab.id)} className={cx("btn btn-sm", aiPanelTab === tab.id ? "btn-dark" : "btn-ghost")} style={{ flex: 1, justifyContent: "center" }}>{tab.label}</button>
           ))}
         </div>
-
         <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-          {aiPanelTab === "insights" && <AIInsights analysis={analysis}/>}
-          {aiPanelTab === "recs" && <AIRecs onNav={onNav}/>}
-          {aiPanelTab === "sources" && <AISources analysis={analysis}/>}
+          {aiPanelTab === "insights" && <AIInsights analysis={analysis} tender={t}/>}
+          {aiPanelTab === "sources" && <AISources citations={citations}/>}
         </div>
-
         <div style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
-          <div style={{ position: "relative" }}>
-            <input className="input" placeholder="Ask anything about this tender…" style={{ paddingRight: 80 }} onClick={() => onNav("chat")}/>
-            <button className="btn btn-sm btn-primary" style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }} onClick={() => onNav("chat")}>
-              <Icon.send size={12}/>
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            <Suggestion onClick={() => onNav("chat")}>Summarize pricing</Suggestion>
-            <Suggestion onClick={() => onNav("chat")}>Draft cover letter</Suggestion>
-            <Suggestion onClick={() => onNav("chat")}>Compare to RFB 099</Suggestion>
-          </div>
+          <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => onNav("chat", t._apiId ? { tenderId: t._apiId } : {})}>
+            <Icon.spark size={12}/> Ask about this tender
+          </button>
         </div>
       </aside>
 
       <style>{`
-        @media (max-width: 1180px){
-          .ta-grid{ grid-template-columns:1fr!important; }
-          .ta-aside{ display:none!important; }
-        }
-        @media (max-width: 720px){
-          .ta-metrics{ grid-template-columns:1fr!important; }
-        }
+        @media (max-width: 1180px){ .ta-grid{ grid-template-columns:1fr!important; } .ta-aside{ display:none!important; } }
+        @media (max-width: 720px){ .ta-metrics{ grid-template-columns:1fr!important; } }
       `}</style>
     </div>
   );
@@ -292,10 +240,10 @@ function Metric({ label, value, unit, sub, tone }) {
     <div>
       <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 6 }}>
-        <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.025em", color }} className="tnum">{value}</div>
+        <div style={{ fontSize: value && value.length > 6 ? 18 : 28, fontWeight: 600, letterSpacing: "-0.025em", color }} className="tnum">{value}</div>
         <div style={{ fontSize: 12, color: "var(--text-3)" }}>{unit}</div>
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4 }}>{sub}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -304,8 +252,7 @@ function Section({ title, sub, k, expanded, toggle, children, right }) {
   const open = expanded.has(k);
   return (
     <div className="card" style={{ marginBottom: 16, padding: 0 }}>
-      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", borderBottom: open ? "1px solid var(--border)" : "none" }}
-           onClick={() => toggle(k)}>
+      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", borderBottom: open ? "1px solid var(--border)" : "none" }} onClick={() => toggle(k)}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.012em" }}>{title}</div>
           {sub && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3 }}>{sub}</div>}
@@ -327,19 +274,13 @@ function RequirementRow({ r }) {
   const c = map[r.status] || map.warn;
   return (
     <div style={{ display: "flex", gap: 12, padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 9, background: "var(--surface)" }}>
-      <div style={{ width: 26, height: 26, borderRadius: 7, background: c.bg, color: c.color, display: "grid", placeItems: "center", flexShrink: 0 }}>
-        {c.icon}
-      </div>
+      <div style={{ width: 26, height: 26, borderRadius: 7, background: c.bg, color: c.color, display: "grid", placeItems: "center", flexShrink: 0 }}>{c.icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {r.section && <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>§{r.section}</span>}
           <span style={{ fontSize: 13, fontWeight: 500 }}>{r.text}</span>
         </div>
-        {r.note && (
-          <div style={{ fontSize: 12, color: c.color, marginTop: 6, paddingLeft: 0, fontWeight: 500 }}>
-            <span style={{ color: "var(--text-3)", fontWeight: 400 }}>AI note · </span>{r.note}
-          </div>
-        )}
+        {r.note && <div style={{ fontSize: 12, color: c.color, marginTop: 6, fontWeight: 500 }}><span style={{ color: "var(--text-3)", fontWeight: 400 }}>AI note · </span>{r.note}</div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
         {r.page && <span className="chip"><Icon.doc size={10}/>p. {r.page}</span>}
@@ -349,131 +290,70 @@ function RequirementRow({ r }) {
   );
 }
 
-function AIInsights({ analysis }) {
+function AIInsights({ analysis, tender }) {
+  const rationale = analysis && analysis.match && analysis.match.rationale;
   return (
     <div className="col gap-3">
       <div className="card card-pad-sm" style={{ background: "var(--surface)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <Icon.bolt size={13} style={{ color: "var(--emerald)" }}/>
-          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Strategic recommendation</div>
-          <span className="chip emerald" style={{ marginLeft: "auto", fontSize: 10 }}>92% conf.</span>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Summary</div>
         </div>
         <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text)", textWrap: "pretty" }}>
-          {analysis && analysis.recommendation
-            ? analysis.recommendation
-            : "Submit — your technical fit is strong (86% match). Prioritise closing the reference and CrowdStrike gaps in the next 7 days. Price aggressively in the 90/10 split: peer median is R 22.8M."}
+          {analysis && analysis.summary ? analysis.summary : "No summary generated."}
         </div>
       </div>
 
-      <div className="card card-pad-sm">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Icon.cpu size={13} style={{ color: "var(--blue)" }}/>
-          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Pricing intelligence</div>
+      {analysis && (analysis.recommendation || tender.risk) && (
+        <div className="card card-pad-sm">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Icon.flag size={13} style={{ color: "var(--blue)" }}/>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>Assessment</div>
+          </div>
+          <div className="col gap-2" style={{ fontSize: 12 }}>
+            {analysis.score != null && <div className="between"><span className="muted">Bid readiness</span><span className="mono tnum">{analysis.score}%</span></div>}
+            {analysis.recommendation && <div className="between"><span className="muted">Recommendation</span><span className="mono tnum" style={{ textTransform: "capitalize" }}>{analysis.recommendation}</span></div>}
+            {tender.risk && <div className="between"><span className="muted">Risk</span><span className="mono tnum" style={{ textTransform: "capitalize" }}>{tender.risk}</span></div>}
+          </div>
         </div>
-        <div className="col gap-2" style={{ fontSize: 12 }}>
-          <div className="between"><span className="muted">Estimated peer floor</span><span className="mono tnum">R 19.8M</span></div>
-          <div className="between"><span className="muted">Peer median</span><span className="mono tnum">R 22.8M</span></div>
-          <div className="between"><span className="muted">Tender ceiling (est.)</span><span className="mono tnum">R 28.0M</span></div>
-          <div className="between"><span style={{ color: "var(--emerald)" }}>Recommended pricing</span><span className="mono tnum" style={{ color: "var(--emerald)" }}>R 21.4M</span></div>
-        </div>
-      </div>
+      )}
 
-      <div className="card card-pad-sm">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Icon.flag size={13} style={{ color: "var(--red)" }}/>
-          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Risk warnings</div>
-        </div>
-        <div className="col gap-2">
-          <RiskItem t="Bid bond not mentioned but typical for SARS — confirm before submission" sev="low"/>
-          <RiskItem t="Mandatory briefing on 28 May — non-attendance = disqualification" sev="high"/>
-          <RiskItem t="Penalty clauses on SLA breach are unusually high (8% of monthly fee)" sev="med"/>
-        </div>
-      </div>
-
-      <div className="card card-pad-sm">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Icon.layers size={13} style={{ color: "var(--violet)" }}/>
-          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Similar past tenders</div>
-        </div>
-        <div className="col gap-2">
-          {[
-            { id: "SARS/IT/2024/088", title: "Endpoint protection refresh", won: true, score: 89 },
-            { id: "SARB/IT/2024/041", title: "SOC modernisation Phase 1", won: false, score: 71 },
-            { id: "SARS/IT/2023/119", title: "Threat intel platform", won: true, score: 84 },
-          ].map(p => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", padding: "6px 0", borderTop: "1px solid var(--border)", gap: 8, fontSize: 12 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 500 }}>{p.title}</div>
-                <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{p.id}</div>
+      {rationale && Object.keys(rationale).length > 0 && (
+        <div className="card card-pad-sm">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Icon.layers size={13} style={{ color: "var(--violet)" }}/>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>Match breakdown</div>
+          </div>
+          <div className="col gap-2" style={{ fontSize: 12 }}>
+            {Object.entries(rationale).map(([k, v]) => (
+              <div key={k}>
+                <div className="between" style={{ marginBottom: 4 }}><span className="muted" style={{ textTransform: "capitalize" }}>{k}</span><span className="mono tnum">{Math.round(v * 100)}%</span></div>
+                <Bar value={v * 100} color={v >= 0.8 ? "var(--emerald)" : v >= 0.5 ? "var(--amber)" : "var(--red)"}/>
               </div>
-              <span className="chip" style={{ fontSize: 10 }}>{p.score}%</span>
-              <span className={cx("chip", p.won ? "emerald" : "red")} style={{ fontSize: 10 }}>{p.won ? "Won" : "Lost"}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RiskItem({ t, sev }) {
-  const map = { high: "var(--red)", med: "var(--amber)", low: "var(--text-3)" };
-  return (
-    <div style={{ display: "flex", gap: 8, fontSize: 12, lineHeight: 1.5 }}>
-      <span style={{ width: 4, borderRadius: 4, background: map[sev], flexShrink: 0 }}/>
-      <span style={{ color: "var(--text-2)" }}>{t}</span>
-    </div>
-  );
-}
-
-function AIRecs({ onNav }) {
-  return (
-    <div className="col gap-3">
-      {[
-        { icon: "edit", title: "Draft executive summary", body: "1-page bid summary highlighting your SOC operations and 6 government references.", to: "builder" },
-        { icon: "shield", title: "Generate SBD 4 form", body: "Auto-fill from your CIPC profile and director list.", to: "compliance" },
-        { icon: "doc", title: "Request 2 reference letters", body: "Draft outreach emails to NTSA Kenya and Zambia Revenue Authority.", to: "chat" },
-        { icon: "chart", title: "Build pricing schedule", body: "Pre-fill Annexure C with your standard rate card plus 8% government discount.", to: "builder" },
-      ].map((r, i) => (
-        <div key={i} className="card card-pad-sm" style={{ display: "flex", gap: 10, cursor: "pointer" }} onClick={() => onNav(r.to)}>
-          <div style={{ width: 30, height: 30, borderRadius: 7, background: "var(--emerald-soft)", color: "var(--emerald)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-            {Icon[r.icon] && Icon[r.icon]({ size: 14 })}
+            ))}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{r.title}</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4, lineHeight: 1.5 }}>{r.body}</div>
-          </div>
-          <Icon.arrow size={13} style={{ color: "var(--text-3)", alignSelf: "center" }}/>
         </div>
-      ))}
+      )}
     </div>
   );
 }
 
-function AISources({ analysis }) {
-  const sources = analysis && analysis.citations && analysis.citations.length
-    ? analysis.citations.map(c => ({ p: c.page, sec: c.section, t: c.snippet || "Source excerpt" }))
-    : [
-        { p: 14, sec: "3.1–3.3", t: "Bidder eligibility & mandatory registration" },
-        { p: 18, sec: "3.7", t: "Reference requirements (3 minimum)" },
-        { p: 19, sec: "3.8", t: "Personnel certification matrix" },
-        { p: 22, sec: "4.0", t: "Document submission list" },
-        { p: 27, sec: "5.0", t: "Submission instructions" },
-        { p: 31, sec: "6.0", t: "Evaluation criteria & weighting" },
-      ];
+function AISources({ citations }) {
+  if (!citations || !citations.length) {
+    return <div style={{ fontSize: 12.5, color: "var(--text-3)", textAlign: "center", padding: "24px 8px" }}>No source citations for this analysis yet.</div>;
+  }
   return (
     <div className="col gap-2">
       <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 2, fontWeight: 600 }}>Cited from source PDF</div>
-      {sources.map((s, i) => (
-        <div key={i} className="card card-pad-sm" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+      {citations.map((s, i) => (
+        <div key={i} className="card card-pad-sm" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 32, height: 40, borderRadius: 4, background: "var(--surface-2)", border: "1px solid var(--border)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-            <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>p.{s.p}</span>
+            <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>p.{s.page || "?"}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 500 }}>{s.t}</div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 2 }}>§ {s.sec}</div>
+            <div style={{ fontSize: 12, fontWeight: 500 }}>{s.snippet || "Source excerpt"}</div>
+            {s.section && <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 2 }}>§ {s.section}</div>}
           </div>
-          <Icon.external size={12} style={{ color: "var(--text-3)" }}/>
         </div>
       ))}
     </div>
@@ -482,10 +362,7 @@ function AISources({ analysis }) {
 
 function Suggestion({ children, onClick }) {
   return (
-    <button onClick={onClick} className="btn btn-sm btn-ghost" style={{
-      fontSize: 11, padding: "3px 9px", background: "var(--surface)",
-      border: "1px solid var(--border)", borderRadius: 999,
-    }}>{children}</button>
+    <button onClick={onClick} className="btn btn-sm btn-ghost" style={{ fontSize: 11, padding: "3px 9px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 999 }}>{children}</button>
   );
 }
 

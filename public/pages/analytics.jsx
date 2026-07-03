@@ -1,36 +1,82 @@
 /* ---------- Analytics ---------- */
 function Analytics() {
+  const isLoggedIn = window.API && API.isLoggedIn();
   const [stats, setStats] = React.useState(null);
-  const [activityData, setActivityData] = React.useState(TENDER_ACTIVITY_MONTH);
+  const [activityData, setActivityData] = React.useState([]);
+  const [byStatus, setByStatus] = React.useState({});
+  const [byProvince, setByProvince] = React.useState({});
+  const [tenders, setTenders] = React.useState([]);
+  const [docs, setDocs] = React.useState([]);
+  const [loaded, setLoaded] = React.useState(!isLoggedIn);
 
   React.useEffect(() => {
-    if (!window.API || !API.isLoggedIn()) return;
+    if (!isLoggedIn) { setLoaded(true); return; }
     API.getAnalytics().then(d => {
       if (d.stats) setStats(d.stats);
-      if (d.activity_by_month && d.activity_by_month.length) {
-        setActivityData(d.activity_by_month.map(m => ({ m: m.month, uploaded: m.uploaded, won: m.won, lost: m.lost })));
-      }
-    }).catch(() => {});
+      if (d.activity_by_month) setActivityData(d.activity_by_month.map(m => ({ m: m.month, uploaded: m.uploaded, won: m.won, lost: m.lost })));
+      if (d.tenders_by_status) setByStatus(d.tenders_by_status);
+      if (d.tenders_by_province) setByProvince(d.tenders_by_province);
+    }).catch(() => {}).finally(() => setLoaded(true));
+    API.getTenders({ limit: 200 }).then(r => setTenders(r.items || [])).catch(() => {});
+    API.getDocuments().then(list => setDocs(list || [])).catch(() => {});
   }, []);
 
-  const activeTenders = stats ? stats.active_tenders : 13;
-  const avgScore = stats ? stats.avg_match_score : 76;
-  const vaultScore = stats ? stats.vault_completeness : 82;
+  const activeTenders = stats ? stats.active_tenders : tenders.length;
+  const avgScore = stats ? stats.avg_match_score : (tenders.length ? Math.round(tenders.reduce((s, t) => s + (t.score || 0), 0) / tenders.length) : 0);
+  const vaultScore = stats ? stats.vault_completeness : 0;
+  const openProposals = stats ? stats.open_proposals : 0;
+
+  // Real win-probability buckets from actual tender scores
+  const scored = tenders.filter(t => t.score != null);
+  const bucketsDef = [
+    { l: "0–20%", lo: 0, hi: 20, c: "var(--red)" },
+    { l: "20–40%", lo: 20, hi: 40, c: "var(--red)" },
+    { l: "40–60%", lo: 40, hi: 60, c: "var(--amber)" },
+    { l: "60–80%", lo: 60, hi: 80, c: "var(--amber)" },
+    { l: "80–100%", lo: 80, hi: 101, c: "var(--emerald)" },
+  ];
+  const probBuckets = bucketsDef.map(b => ({ l: b.l, c: b.c, v: scored.filter(t => t.score >= b.lo && t.score < b.hi).length }));
+
+  // Real "tenders by status" donut
+  const statusColors = { "in-review": "var(--blue)", draft: "var(--text-3)", shortlisted: "var(--emerald)", flagged: "var(--amber)", archived: "var(--violet)" };
+  const statusSegments = Object.entries(byStatus).map(([k, v]) => ({ l: k.replace("-", " "), v, c: statusColors[k] || "var(--text-3)" })).filter(s => s.v > 0);
+
+  // Real "top issuers" from tender data
+  const issuerCounts = {};
+  tenders.forEach(t => { if (t.issuer) issuerCounts[t.issuer] = (issuerCounts[t.issuer] || 0) + 1; });
+  const topIssuers = Object.entries(issuerCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, val]) => ({ name, val }));
+
+  // Real compliance category coverage
+  const catPct = (cat) => {
+    const found = docs.filter(d => d.category === cat);
+    if (!found.length) return 0;
+    if (found.some(d => d.status === "expired")) return 40;
+    if (found.some(d => d.status === "expiring")) return 70;
+    return 100;
+  };
+  const compCats = [
+    { l: "Tax & financial", v: catPct("Tax") },
+    { l: "B-BBEE", v: catPct("B-BBEE") },
+    { l: "SBD forms", v: catPct("SBD Forms") },
+    { l: "Insurance", v: catPct("Insurance") },
+  ];
+
+  const hasData = tenders.length > 0 || (stats && activeTenders > 0);
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="Insights"
         title="Reports & Analytics"
-        subtitle="Pipeline performance, compliance trends and AI usage across your workspace."
+        subtitle="Pipeline performance and compliance across your workspace."
         actions={
           <>
-            <button className="btn btn-sm" onClick={() => window.toast && toast("Custom date ranges are coming soon. Showing the last 6 months.")}><Icon.calendar size={13}/> Last 6 months</button>
             <button className="btn btn-sm" onClick={() => {
               const rows = [["Metric","Value"],
                 ["Active tenders", activeTenders],
                 ["Avg bid readiness %", avgScore],
-                ["Vault completeness %", vaultScore]];
+                ["Vault completeness %", vaultScore],
+                ["Open proposals", openProposals]];
               activityData.forEach(m => rows.push([`Activity ${m.m} (uploaded/won)`, `${m.uploaded}/${m.won}`]));
               const csv = rows.map(r => r.map(c => `"${String(c)}"`).join(",")).join("\n");
               window.downloadBlob(new Blob([csv], { type: "text/csv" }), "tenderpilot-analytics.csv");
@@ -39,151 +85,107 @@ function Analytics() {
         }
       />
 
-      {/* KPIs */}
-      <div className="grid g-4">
-        <KPI label="Active tenders" value={String(activeTenders)} delta="+3" deltaDir="up" spark={[6,7,8,9,9,11,11,12,13,activeTenders]}/>
-        <KPI label="Avg bid readiness" value={avgScore + "%"} delta="+9 pts" deltaDir="up" spark={[58,60,63,67,68,70,72,74,75,avgScore]}/>
-        <KPI label="Vault completeness" value={vaultScore + "%"} delta="+14 pts" deltaDir="up" spark={[55,58,62,64,67,71,73,75,78,vaultScore]}/>
-        <KPI label="AI hours saved" value="284" delta="+62" deltaDir="up" spark={[20,30,45,50,70,90,110,130,160,180]}/>
-      </div>
-
-      {/* Charts row 1 */}
-      <div className="grid g-2" style={{ marginTop: 16 }}>
-        <div className="card card-pad">
-          <div className="between" style={{ marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>Tender pipeline value</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Cumulative contract value across stages</div>
-            </div>
-            <span className="chip emerald"><Icon.trending size={10}/>+38% MoM</span>
+      {loaded && !hasData ? (
+        <div className="card" style={{ padding: "56px 24px", textAlign: "center", color: "var(--text-3)" }}>
+          <Icon.chart size={26} style={{ opacity: .4, marginBottom: 12 }}/>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-2)", marginBottom: 6 }}>No analytics yet</div>
+          <div style={{ fontSize: 12.5, maxWidth: 380, margin: "0 auto", lineHeight: 1.6 }}>
+            Your reports populate as you add tenders and compliance documents. Charts reflect only your real workspace data.
           </div>
-          <AreaChart/>
         </div>
-        <div className="card card-pad">
-          <div className="between" style={{ marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>Win probability distribution</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Where your active tenders sit on the readiness curve</div>
+      ) : (
+        <>
+          {/* KPIs — real */}
+          <div className="grid g-4">
+            <KPI label="Active tenders" value={String(activeTenders)}/>
+            <KPI label="Avg bid readiness" value={avgScore ? avgScore + "%" : "—"}/>
+            <KPI label="Vault completeness" value={vaultScore ? vaultScore + "%" : "—"}/>
+            <KPI label="Open proposals" value={String(openProposals)}/>
+          </div>
+
+          {/* Charts row 1 — real */}
+          <div className="grid g-2" style={{ marginTop: 16 }}>
+            <div className="card card-pad">
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 4 }}>Bid readiness distribution</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 14 }}>Where your tenders sit on the readiness curve</div>
+              {scored.length ? <ProbabilityChart buckets={probBuckets}/> : <EmptyChart label="No scored tenders yet"/>}
+            </div>
+            <div className="card card-pad">
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 4 }}>Tenders by status</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 14 }}>Distribution across your pipeline</div>
+              {statusSegments.length ? <DonutChart segments={statusSegments}/> : <EmptyChart label="No tenders yet"/>}
             </div>
           </div>
-          <ProbabilityChart/>
-        </div>
-      </div>
 
-      {/* Charts row 2 */}
-      <div className="grid g-3" style={{ marginTop: 16 }}>
-        <div className="card card-pad">
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Tenders by sector</div>
-          <DonutChart segments={[
-            { l: "Government IT", v: 32, c: "var(--emerald)" },
-            { l: "Construction", v: 18, c: "var(--amber)" },
-            { l: "Security", v: 22, c: "var(--blue)" },
-            { l: "Services", v: 15, c: "var(--violet)" },
-            { l: "Other", v: 13, c: "var(--text-3)" },
-          ]}/>
-        </div>
-        <div className="card card-pad">
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Top issuers (by submitted)</div>
-          <div className="col gap-3">
-            {[
-              { name: "South African Revenue Service", val: 9, win: 4 },
-              { name: "Eskom Holdings SOC", val: 7, win: 3 },
-              { name: "Transnet SOC Ltd", val: 5, win: 2 },
-              { name: "City of Johannesburg", val: 4, win: 1 },
-              { name: "Dept. of Public Works", val: 3, win: 0 },
-            ].map((r, i) => (
-              <div key={i}>
-                <div className="between" style={{ marginBottom: 6 }}>
-                  <span style={{ fontSize: 12.5 }}>{r.name}</span>
-                  <span className="mono tnum" style={{ fontSize: 11 }}>{r.win}/{r.val}</span>
+          {/* Charts row 2 — real */}
+          <div className="grid g-2" style={{ marginTop: 16 }}>
+            <div className="card card-pad">
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Top issuers</div>
+              {topIssuers.length ? (
+                <div className="col gap-3">
+                  {topIssuers.map((r, i) => (
+                    <div key={i}>
+                      <div className="between" style={{ marginBottom: 6 }}>
+                        <span style={{ fontSize: 12.5 }}>{r.name}</span>
+                        <span className="mono tnum" style={{ fontSize: 11 }}>{r.val}</span>
+                      </div>
+                      <Bar value={(r.val / topIssuers[0].val) * 100} color="var(--emerald)"/>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ display: "flex", gap: 2, height: 6, borderRadius: 999, overflow: "hidden", background: "var(--surface-2)" }}>
-                  <div style={{ width: `${(r.win/r.val)*100}%`, background: "var(--emerald)" }}/>
-                  <div style={{ width: `${((r.val-r.win)/r.val)*100}%`, background: "var(--border-strong)" }}/>
-                </div>
+              ) : <EmptyChart label="No issuers yet"/>}
+            </div>
+            <div className="card card-pad">
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Compliance coverage</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 14 }}>
+                <div className="tnum" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.025em" }}>{vaultScore}</div>
+                <div style={{ fontSize: 12, color: "var(--text-3)" }}>% overall</div>
               </div>
-            ))}
+              <div className="col gap-2" style={{ fontSize: 12 }}>
+                {compCats.map(c => (
+                  <div key={c.l}>
+                    <div className="between" style={{ marginBottom: 4 }}><span className="muted">{c.l}</span><span className="mono tnum">{c.v}%</span></div>
+                    <Bar value={c.v} color={c.v >= 100 ? "var(--emerald)" : c.v >= 70 ? "var(--amber)" : "var(--red)"}/>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="card card-pad">
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>Compliance trend</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 12 }}>
-            <div className="tnum" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.025em" }}>{vaultScore}</div>
-            <div className="chip emerald" style={{ fontSize: 10 }}>+14 pts</div>
-            <div style={{ fontSize: 12, color: "var(--text-3)" }}>this quarter</div>
-          </div>
-          <Sparkline data={[55,58,62,64,67,71,73,75,78,80,vaultScore,vaultScore]} width={300} height={80} color="var(--emerald)"/>
-          <div className="divider" style={{ margin: "14px 0" }}/>
-          <div className="col gap-2" style={{ fontSize: 12 }}>
-            <div className="between"><span className="muted">Tax & financial</span><span className="mono tnum">96%</span></div>
-            <div className="between"><span className="muted">B-BBEE</span><span className="mono tnum">85%</span></div>
-            <div className="between"><span className="muted">SBD forms</span><span className="mono tnum">62%</span></div>
-            <div className="between"><span className="muted">Insurance</span><span className="mono tnum">88%</span></div>
-          </div>
-        </div>
-      </div>
 
-      {/* Activity */}
-      <div className="card" style={{ marginTop: 16, padding: 0 }}>
-        <div className="between" style={{ padding: "14px 18px" }}>
-          <div>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>Monthly tender activity</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Uploaded vs won, last 6 months</div>
+          {/* Monthly activity — real */}
+          <div className="card" style={{ marginTop: 16, padding: 0 }}>
+            <div className="between" style={{ padding: "14px 18px" }}>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>Monthly tender activity</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Uploaded vs won, last 6 months</div>
+              </div>
+              <div className="row gap-2">
+                <span className="chip"><span className="chip-dot" style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)" }}/>Uploaded</span>
+                <span className="chip emerald"><span className="chip-dot"/>Won</span>
+              </div>
+            </div>
+            <div style={{ padding: "0 18px 18px" }}>
+              {activityData.some(m => m.uploaded || m.won) ? (
+                <MonthBars data={activityData} height={220}/>
+              ) : (
+                <div style={{ height: 200, display: "grid", placeItems: "center", color: "var(--text-3)", fontSize: 12.5 }}>Activity builds as you upload and win tenders.</div>
+              )}
+            </div>
           </div>
-          <div className="row gap-2">
-            <span className="chip"><span className="chip-dot" style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)" }}/>Uploaded</span>
-            <span className="chip emerald"><span className="chip-dot"/>Won</span>
-          </div>
-        </div>
-        <div style={{ padding: "0 18px 18px" }}>
-          <MonthBars data={activityData} height={220}/>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
-function AreaChart() {
-  const data = [40,42,52,58,68,72,78,82,88,92];
-  const w = 560, h = 200;
-  const max = Math.max(...data), min = 0;
-  const step = w / (data.length - 1);
-  const pts = data.map((v, i) => [i * step, h - 16 - ((v - min) / (max - min)) * (h - 36)]);
-  const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+function EmptyChart({ label }) {
   return (
-    <div style={{ position: "relative" }}>
-      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 220 }}>
-        <defs>
-          <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--emerald)" stopOpacity=".25"/>
-            <stop offset="100%" stopColor="var(--emerald)" stopOpacity="0"/>
-          </linearGradient>
-        </defs>
-        {[0,1,2,3].map(i => (
-          <line key={i} x1="0" x2={w} y1={20 + i * 50} y2={20 + i * 50} stroke="var(--border)" strokeDasharray="2 4"/>
-        ))}
-        <path d={`${d} L${w},${h-16} L0,${h-16} Z`} fill="url(#ag)"/>
-        <path d={d} fill="none" stroke="var(--emerald)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        {pts.map((p, i) => i % 2 === 0 && (
-          <circle key={i} cx={p[0]} cy={p[1]} r="3" fill="var(--surface)" stroke="var(--emerald)" strokeWidth="2"/>
-        ))}
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-3)" }}>
-        {["Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May"].map((m,i) => <span key={i}>{m}</span>)}
-      </div>
-    </div>
+    <div style={{ height: 180, display: "grid", placeItems: "center", color: "var(--text-3)", fontSize: 12.5 }}>{label}</div>
   );
 }
 
-function ProbabilityChart() {
-  const buckets = [
-    { l: "0–20%", v: 1, c: "var(--red)" },
-    { l: "20–40%", v: 2, c: "var(--red)" },
-    { l: "40–60%", v: 3, c: "var(--amber)" },
-    { l: "60–80%", v: 5, c: "var(--amber)" },
-    { l: "80–100%", v: 3, c: "var(--emerald)" },
-  ];
-  const max = Math.max(...buckets.map(b => b.v));
+function ProbabilityChart({ buckets }) {
+  const max = Math.max(1, ...buckets.map(b => b.v));
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${buckets.length}, 1fr)`, gap: 14, alignItems: "end", height: 200 }}>
@@ -200,7 +202,7 @@ function ProbabilityChart() {
 }
 
 function DonutChart({ segments }) {
-  const total = segments.reduce((a, s) => a + s.v, 0);
+  const total = segments.reduce((a, s) => a + s.v, 0) || 1;
   const r = 56, c = 2 * Math.PI * r;
   let offset = 0;
   return (

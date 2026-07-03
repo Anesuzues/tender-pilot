@@ -1,4 +1,11 @@
 /* ---------- Landing Page ---------- */
+// Illustrative sample shown only on the public marketing page (never in the app).
+const LANDING_PREVIEW = [
+  { id: "RFB 2025/IT/0142", title: "Cybersecurity infrastructure", score: 86 },
+  { id: "ESKOM/RFQ/2026/0337", title: "SCADA systems maintenance", score: 78 },
+  { id: "MUN/JHB/SEC/2026/008", title: "Physical security services", score: 72 },
+];
+
 function Landing({ onEnter }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", overflowY: "auto" }}>
@@ -395,11 +402,11 @@ function DashboardPreview() {
             </div>
           </div>
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Recent tenders</div>
-            {TENDERS.slice(0,3).map(t => (
+            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Example analysis</div>
+            {LANDING_PREVIEW.map(t => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--border)", gap: 10, fontSize: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500 }}>{t.title.slice(0,42)}…</div>
+                  <div style={{ fontWeight: 500 }}>{t.title}</div>
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 2 }}>{t.id}</div>
                 </div>
                 <span className="mono" style={{ fontSize: 11 }}>{t.score}%</span>

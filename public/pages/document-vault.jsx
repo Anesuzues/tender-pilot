@@ -4,7 +4,7 @@ function DocumentVault({ onNav }) {
   const [filter, setFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
-  const [allDocs, setAllDocs] = React.useState(isLoggedIn ? [] : COMPLIANCE_DOCS);
+  const [allDocs, setAllDocs] = React.useState([]);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const fileInputRef = React.useRef();

@@ -1,32 +1,37 @@
 /* ---------- AI Chat ---------- */
 function AIChat({ onNav, activeTenderId }) {
+  const isLoggedIn = window.API && API.isLoggedIn();
   const [messages, setMessages] = React.useState([
-    { who: "ai", text: "I've finished parsing **RFB 2025/IT/0142** (SARS Cybersecurity). What would you like to know?", sources: [] },
+    { who: "ai", text: "Ask me anything about your tenders — requirements, eligibility, pricing, or what documents you're missing.", sources: [] },
   ]);
   const [input, setInput] = React.useState("");
   const [typing, setTyping] = React.useState(false);
   const [sessionId, setSessionId] = React.useState(null);
-  const [sessions, setSessions] = React.useState(CHAT_HISTORY);
+  const [sessions, setSessions] = React.useState([]);
+  const [contextTender, setContextTender] = React.useState(null);
+  const [linkedDocs, setLinkedDocs] = React.useState([]);
   const scrollRef = React.useRef(null);
 
-  // Create or load a chat session
+  // Create or load a chat session + real context
   React.useEffect(() => {
-    if (!window.API || !API.isLoggedIn()) return;
+    if (!isLoggedIn) return;
     const init = async () => {
       try {
         const sess = await API.createChatSession(activeTenderId || null);
         setSessionId(sess.id);
-      } catch (e) { /* fall back to mock */ }
+      } catch (e) {}
       try {
         const list = await API.getChatSessions();
         const items = list.items || list;
-        if (items.length) {
-          setSessions(items.map((s, i) => ({ id: s.id, title: s.title || "Chat session", date: i === 0 ? "Today" : "Earlier", active: i === 0 })));
-        }
+        if (items.length) setSessions(items.map((s, i) => ({ id: s.id, title: s.title || "Chat session", date: i === 0 ? "Today" : "Earlier", active: i === 0 })));
       } catch (e) {}
+      if (activeTenderId) {
+        try { setContextTender(await API.getTender(activeTenderId)); } catch (e) {}
+      }
+      try { setLinkedDocs((await API.getDocuments()) || []); } catch (e) {}
     };
     init();
-  }, [activeTenderId]);
+  }, [activeTenderId, isLoggedIn]);
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -35,28 +40,32 @@ function AIChat({ onNav, activeTenderId }) {
   const send = async (text) => {
     const q = (text || input).trim();
     if (!q) return;
+    if (!isLoggedIn) { window.toast && toast("Sign in to chat with TenderPilot AI."); return; }
     setMessages(m => [...m, { who: "user", text: q }]);
     setInput("");
     setTyping(true);
 
-    if (window.API && API.isLoggedIn() && sessionId) {
-      try {
-        const res = await API.sendMessage(sessionId, q);
-        setTyping(false);
-        setMessages(m => [...m, {
-          who: "ai",
-          text: res.answer,
-          sources: (res.citations || []).map(c => ({ p: c.page, sec: c.section, snippet: c.snippet })),
-        }]);
-        return;
-      } catch (e) { /* fall through to mock */ }
+    // Ensure a session exists (needed for tender-grounded chat)
+    let sid = sessionId;
+    if (!sid) {
+      try { const sess = await API.createChatSession(activeTenderId || null); sid = sess.id; setSessionId(sid); } catch (e) {}
     }
 
-    // Mock fallback
-    setTimeout(() => {
+    try {
+      const res = await API.sendMessage(sid, q);
       setTyping(false);
-      setMessages(m => [...m, mockReply(q)]);
-    }, 1400);
+      setMessages(m => [...m, {
+        who: "ai",
+        text: res.answer,
+        sources: (res.citations || []).map(c => ({ p: c.page, sec: c.section, snippet: c.snippet })),
+      }]);
+    } catch (e) {
+      setTyping(false);
+      const msg = (e && e.message) || "";
+      setMessages(m => [...m, { who: "ai", text: msg.includes("tender")
+        ? "Open this chat from a specific tender (via its analysis page) so I can ground my answers in that document."
+        : "Sorry — I couldn't answer that just now. Please try again.", sources: [] }]);
+    }
   };
 
   const newChat = async () => {
@@ -83,8 +92,6 @@ function AIChat({ onNav, activeTenderId }) {
     window.toast && toast(ok ? "Conversation copied" : "Copy failed");
   };
 
-  const contextTender = TENDERS[0];
-
   return (
     <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 320px", flex: 1, minHeight: 0 }} className="chat-grid">
       {/* Session list */}
@@ -94,6 +101,9 @@ function AIChat({ onNav, activeTenderId }) {
           <button className="btn btn-sm btn-ghost btn-icon" style={{ marginLeft: "auto" }} title="New conversation" onClick={newChat}><Icon.plus size={12}/></button>
         </div>
         <div style={{ padding: "0 8px", flex: 1, overflowY: "auto" }}>
+          {sessions.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-3)", padding: "12px 8px", lineHeight: 1.5 }}>No conversations yet.</div>
+          )}
           {Object.entries(groupBy(sessions, "date")).map(([date, items]) => (
             <div key={date} style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 10.5, color: "var(--text-3)", padding: "10px 8px 4px", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>{date}</div>
@@ -112,8 +122,10 @@ function AIChat({ onNav, activeTenderId }) {
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: "var(--bg)" }}>
         <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, background: "var(--bg-elev)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>SARS Cybersecurity — eligibility</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Context: RFB 2025/IT/0142 · {messages.length} messages{sessionId ? " · live" : " · demo mode"}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contextTender ? contextTender.title : "TenderPilot AI Assistant"}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>
+              {contextTender ? `Context: ${contextTender.id} · ` : ""}{messages.length} message{messages.length !== 1 ? "s" : ""}{sessionId ? " · live" : ""}
+            </div>
           </div>
           <span className="chip"><Icon.fingerprint size={10}/>POPIA encrypted</span>
           <button className="btn btn-sm btn-ghost" title="Copy conversation" onClick={copyConversation}><Icon.copy size={12}/></button>
@@ -156,7 +168,7 @@ function AIChat({ onNav, activeTenderId }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, fontSize: 10.5, color: "var(--text-3)" }}>
               <span>TenderPilot can make mistakes. Verify mandatory items with source PDF.</span>
-              <span><Icon.cpu size={10}/> {sessionId ? "Live · connected" : "Demo mode"}</span>
+              <span><Icon.cpu size={10}/> {sessionId ? "Live · connected" : "Connecting…"}</span>
             </div>
           </div>
         </div>
@@ -165,9 +177,17 @@ function AIChat({ onNav, activeTenderId }) {
       {/* Context panel */}
       <aside style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-elev)", overflowY: "auto", padding: 14 }} className="chat-context">
         <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, marginBottom: 12 }}>Active context</div>
-        <ContextCard t={contextTender} onNav={onNav}/>
-        <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, margin: "20px 0 10px" }}>Linked vault docs</div>
-        {COMPLIANCE_DOCS.slice(0,4).map(d => (
+        {contextTender ? (
+          <ContextCard t={contextTender} onNav={onNav}/>
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--text-3)", padding: "10px 0", lineHeight: 1.5 }}>
+            No tender in context. Open the assistant from a tender's analysis page for grounded, cited answers.
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, margin: "20px 0 10px" }}>Your vault documents</div>
+        {linkedDocs.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>No documents in your vault yet.</div>
+        ) : linkedDocs.slice(0, 5).map(d => (
           <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid var(--border)", fontSize: 12 }}>
             <div style={{ width: 24, height: 28, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, display: "grid", placeItems: "center", flexShrink: 0 }}>
               <Icon.doc size={11} style={{ color: "var(--text-3)" }}/>
@@ -246,33 +266,19 @@ function MessageBubble({ m }) {
 
 function ContextCard({ t, onNav }) {
   return (
-    <div className="card card-pad-sm" style={{ cursor: "pointer" }} onClick={() => onNav("analysis")}>
+    <div className="card card-pad-sm" style={{ cursor: "pointer" }} onClick={() => onNav("analysis", t._apiId ? { tenderId: t._apiId } : {})}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{t.id}</span>
-        <span className="chip emerald" style={{ marginLeft: "auto", fontSize: 10 }}>{t.score}%</span>
+        {t.score != null && <span className="chip emerald" style={{ marginLeft: "auto", fontSize: 10 }}>{t.score}%</span>}
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.4 }}>{t.title}</div>
-      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>{t.issuer}</div>
+      {t.issuer && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>{t.issuer}</div>}
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-        <span className="chip"><Icon.clock size={10}/>{t.closingDays}d</span>
-        <span className="chip"><Icon.tag size={10}/>{t.value}</span>
+        {t.closingDays != null && <span className="chip"><Icon.clock size={10}/>{t.closingDays}d</span>}
+        {t.value && <span className="chip"><Icon.tag size={10}/>{t.value}</span>}
       </div>
     </div>
   );
-}
-
-function mockReply(q) {
-  const lower = q.toLowerCase();
-  if (lower.includes("pricing") || lower.includes("price")) {
-    return { who: "ai", text: "The pricing schedule is at **Annexure C**, page 41. Bidders must submit per-line-item costing plus a 5-year total. Note that **rates are evaluated using the 90/10 PPPFA split**.", bullets: [{ sev: "warn", title: "Bid security required", body: "A 2% performance guarantee (R 490,000 estimated) must accompany your bid. Pre-approved bank letter required." }], sources: [{ p: 41, sec: "Annex C" }] };
-  }
-  if (lower.includes("executive") || lower.includes("summary")) {
-    return { who: "ai", text: "I can draft a 1-page executive summary covering your SOC track record, government client base, and ISO 27001 certification. Would you like me to **generate it now** and insert it into the Proposal Builder?", sources: [] };
-  }
-  if (lower.includes("missing") || lower.includes("requirement")) {
-    return { who: "ai", text: "Three mandatory requirements are not currently met.", bullets: [{ sev: "fail", title: "Reference letters", body: "Section 3.7 requires three reference letters from revenue authorities. Only one has been provided." }, { sev: "warn", title: "CrowdStrike Falcon certification", body: "Section 3.8 mandates ≥2 certified engineers. Your HR vault shows 0 staff with this certification." }, { sev: "fail", title: "SBD 4 – Declaration of Interest", body: "Form not present in your document vault. I can auto-generate it from your CIPC company disclosure." }], sources: [{ p: 18, sec: "3.7" }, { p: 19, sec: "3.8" }, { p: 22, sec: "4.0" }] };
-  }
-  return { who: "ai", text: "Based on my reading, the key consideration is the **mandatory briefing on 28 May 2026**. Non-attendance disqualifies your bid. I can also draft the cover letter and SBD 4 for you whenever you're ready.", sources: [{ p: 27, sec: "5.0" }] };
 }
 
 function groupBy(arr, key) {
