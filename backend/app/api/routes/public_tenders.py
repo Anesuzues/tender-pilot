@@ -187,6 +187,9 @@ async def import_to_workspace(
     await db.commit()
     if data:
         await ingest_tender_job(tender.id, data)
+        # Ingestion runs in its own session — expire this session's cached
+        # row so the response reflects the post-pipeline processing status.
+        db.expire_all()
         refreshed = await db.get(Tender, tender.id)
         if refreshed is not None:
             tender = refreshed
