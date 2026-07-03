@@ -29,6 +29,7 @@ from app.schemas.common import Message
 from app.security import create_token, decode_token, hash_password, verify_password
 from app.services.email import send_email
 from app.services.events import audit, track
+from app.services.throttle import enforce as throttle
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _limiter = Limiter(key_func=get_remote_address)
@@ -44,6 +45,8 @@ def _tokens(user: User) -> TokenPair:
 @router.post("/register", response_model=AuthResult, status_code=status.HTTP_201_CREATED)
 @_limiter.limit("5/minute")
 async def register(request: Request, payload: RegisterRequest, db: DbSession) -> AuthResult:
+    ip = request.client.host if request.client else "unknown"
+    await throttle(db, f"register:{ip}", limit=5, window_seconds=3600)
     existing = (
         await db.execute(select(User).where(User.email == payload.email.lower()))
     ).scalar_one_or_none()
@@ -97,6 +100,7 @@ async def login_form(
 @router.post("/login/json", response_model=AuthResult)
 @_limiter.limit("10/minute")
 async def login_json(request: Request, payload: LoginRequest, db: DbSession) -> AuthResult:
+    await throttle(db, f"login:{payload.email.lower()}", limit=10, window_seconds=300)
     user = await _authenticate(db, payload.email, payload.password)
     await audit(db, user.id, "user.login", "user", user.id)
     return AuthResult(user=UserOut.model_validate(user), tokens=_tokens(user))
@@ -124,6 +128,7 @@ async def forgot_password(
 ) -> Message:
     """Send a password-reset link. Always returns success to prevent account
     enumeration; only sends an email if the account actually exists."""
+    await throttle(db, f"forgot:{payload.email.lower()}", limit=3, window_seconds=900)
     user = (
         await db.execute(select(User).where(User.email == payload.email.lower()))
     ).scalar_one_or_none()

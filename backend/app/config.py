@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     superadmin_email: str = "admin@tenderpilot.ai"
     superadmin_password: str = "TenderPilotAdmin123!"
 
+    # --- Monitoring ---
+    # Set SENTRY_DSN to enable error reporting (free tier at sentry.io).
+    sentry_dsn: str | None = None
+
     # --- Email (Resend) ---
     # Set RESEND_API_KEY to enable real transactional email (password resets).
     # Without it, emails are logged server-side and flows still complete.

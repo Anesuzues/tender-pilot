@@ -47,6 +47,16 @@ class AnalyticsEvent(Base):
     properties: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class AuthThrottle(Base):
+    """One row per sensitive auth attempt (login/register/forgot). Counting
+    recent rows per key gives rate limiting that survives across serverless
+    invocations, unlike in-memory limiters that reset on every cold start."""
+
+    __tablename__ = "auth_throttle"
+
+    key: Mapped[str] = mapped_column(String(400), index=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

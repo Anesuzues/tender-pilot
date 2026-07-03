@@ -22,6 +22,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("tenderpilot")
 
+# Error monitoring — active only when SENTRY_DSN is configured.
+if settings.sentry_dsn:  # pragma: no cover
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            traces_sample_rate=0.1,
+        )
+        logger.info("Sentry error monitoring enabled")
+    except Exception as exc:
+        logger.warning("Sentry init failed (%s) — continuing without monitoring", exc)
+
 
 async def _seed_demo_user() -> None:
     """Create demo account on first boot if it doesn't exist yet."""
@@ -57,6 +71,9 @@ async def _seed_demo_user() -> None:
         logger.warning("Demo user seed failed (%s) — skipping", exc)
 
 
+_DEFAULT_SUPERADMIN_PW = "TenderPilotAdmin123!"
+
+
 async def _seed_superadmin() -> None:
     """Create the platform super-admin on first boot (oversees all companies)."""
     from sqlalchemy import select
@@ -75,6 +92,17 @@ async def _seed_superadmin() -> None:
                     existing.is_superuser = True
                     await db.commit()
                     logger.info("Existing account promoted to super-admin: %s", email)
+                return
+            # Never create the account with the repo-committed default password
+            # in production — require an explicit SUPERADMIN_PASSWORD env var.
+            if (
+                settings.environment == "production"
+                and settings.superadmin_password == _DEFAULT_SUPERADMIN_PW
+            ):
+                logger.warning(
+                    "Super-admin not seeded: set SUPERADMIN_PASSWORD env var "
+                    "(refusing to use the default password in production)"
+                )
                 return
             user = User(
                 email=email,
