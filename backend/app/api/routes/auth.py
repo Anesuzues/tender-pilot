@@ -98,7 +98,7 @@ async def login_form(
 
 
 @router.post("/login/json", response_model=AuthResult)
-@_limiter.limit("10/minute")
+@_limiter.limit("30/minute")  # coarse per-IP flood guard; precise per-email limit is DB-backed
 async def login_json(request: Request, payload: LoginRequest, db: DbSession) -> AuthResult:
     await throttle(db, f"login:{payload.email.lower()}", limit=10, window_seconds=300)
     user = await _authenticate(db, payload.email, payload.password)
