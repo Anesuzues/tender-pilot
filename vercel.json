@@ -6,8 +6,12 @@
   "rewrites": [
     { "source": "/api/v1/:path*", "destination": "/api/index" },
     { "source": "/health",        "destination": "/api/index" },
+    { "source": "/health/db",     "destination": "/api/index" },
     { "source": "/docs",          "destination": "/api/index" },
     { "source": "/redoc",         "destination": "/api/index" },
     { "source": "/openapi.json",  "destination": "/api/index" }
+  ],
+  "crons": [
+    { "path": "/health/db", "schedule": "0 6 * * *" }
   ]
 }

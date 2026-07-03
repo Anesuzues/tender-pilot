@@ -159,11 +159,45 @@ def create_app() -> FastAPI:
             "storage_backend": settings.storage_backend,
         }
 
+    @app.get("/health/db", tags=["health"])
+    async def health_db() -> dict:
+        """Runs a trivial query. Doubles as the daily keep-alive ping that
+        stops the free-tier Supabase project from auto-pausing."""
+        from sqlalchemy import text
+        from app.database import SessionLocal
+
+        try:
+            async with SessionLocal() as db:
+                await db.execute(text("SELECT 1"))
+            return {"database": "ok"}
+        except Exception as exc:
+            logger.warning("DB health check failed: %s", exc)
+            return JSONResponse(
+                status_code=503,
+                content={"database": "unavailable", "detail": "Database unreachable"},
+            )
+
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Connection-level DB failures (paused Supabase, network) → clean 503
+        # instead of a raw 500, so the frontend can show a helpful message.
+        name = type(exc).__name__
+        text_ = str(exc).lower()
+        db_signals = ("connect", "enotfound", "tenant", "pool", "timeout", "operationalerror")
+        if any(s in text_ for s in db_signals) or "asyncpg" in type(exc).__module__:
+            logger.error("Database unavailable on %s: %s: %s", request.url.path, name, exc)
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service temporarily unavailable — database unreachable. Please try again shortly."},
+            )
+        logger.exception("Unhandled error on %s", request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     return app
 
